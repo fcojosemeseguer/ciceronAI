@@ -1,4 +1,4 @@
-from app.core.database import create_user, check_user, get_user_code, create_project, create_analysis, get_projects, get_project
+from app.core.database import create_user, check_user, get_user_code, get_user_data, create_project, create_analysis, get_projects, get_project
 from app.api.v1.models import CredsInput, NewProjectInfo, AnalyseData, AuthData, AuthDataProject
 from app.processors.pipeline import create_chat, DebateFase, Postura
 from app.services.metrics import process_complete_analysis
@@ -7,6 +7,7 @@ from fastapi import APIRouter, File, UploadFile, HTTPException, status, Depends
 import os
 from datetime import datetime, timedelta, timezone
 import jwt
+from jwt.exceptions import ExpiredSignatureError
 from dotenv import load_dotenv
 from pathlib import Path
 import shutil
@@ -58,6 +59,8 @@ async def login(data: CredsInput):
     creds = {"user": data.user, "pswd": data.pswd}
     user_code = get_user_code(creds)
     if check_user(creds):
+        # Obtener datos completos del usuario incluyendo el nombre
+        user_data = get_user_data(creds)
         expire = datetime.now(timezone.utc) + \
             timedelta(minutes=ACCESS_TOKEN_EXPIRE_MINUTES)
         payload = {
@@ -70,7 +73,8 @@ async def login(data: CredsInput):
             "message": "login done!",
             "access_token": token,
             "token_type": "bearer",
-            "user": data.user
+            "user": data.user,
+            "name": user_data.get("name", data.user.split('@')[0])
         }
     else:
         raise HTTPException(401, "incorrect login")
@@ -78,9 +82,11 @@ async def login(data: CredsInput):
 
 @router.post("/register")
 async def register(data: CredsInput):
-    creds = {"user": data.user, "pswd": data.pswd}
-    if create_user(creds):
+    creds = {"user": data.user, "pswd": data.pswd, "name": data.name}
+    result = create_user(creds)
+    if result is True:
         user_code = get_user_code(creds)
+        user_data = get_user_data(creds)
         expire = datetime.now(timezone.utc) + \
             timedelta(minutes=ACCESS_TOKEN_EXPIRE_MINUTES)
         payload = {
@@ -93,10 +99,13 @@ async def register(data: CredsInput):
             "message": "register done!",
             "access_token": token,
             "token_type": "bearer",
-            "user": data.user
+            "user": data.user,
+            "name": user_data.get("name", data.user.split('@')[0])
         }
+    elif result == "user_exists":
+        raise HTTPException(409, "El usuario o email ya está registrado")
     else:
-        raise HTTPException(400, "incorrect register")
+        raise HTTPException(400, "Error al registrar usuario. Verifica los datos e intenta nuevamente.")
 
 
 @router.post("/new-project")
@@ -203,7 +212,10 @@ async def analyse(data: AnalyseData = Depends(AnalyseData.as_form)):
 
 @router.post("/get-projects")
 async def getprojects(data: AuthData):
-    payload = jwt.decode(data.jwt, SECRET_KEY, algorithms=[ALGORITHM])
+    try:
+        payload = jwt.decode(data.jwt, SECRET_KEY, algorithms=[ALGORITHM])
+    except ExpiredSignatureError:
+        raise HTTPException(status_code=401, detail="JWT token has expired")
     result = get_projects({"user_code": payload["user_code"]})
     if result is None:
         raise HTTPException(401)

@@ -54,7 +54,7 @@ class AnalyseData(BaseModel):
     @field_validator('file')
     @classmethod
     def validate_wav(cls, v: UploadFile) -> UploadFile:
-        if not v.filename.lower().endswith('.wav'):
+        if not v.filename or not v.filename.lower().endswith('.wav'):
             raise ValueError('El archivo debe tener extensión .wav')
 
         valid_mime_types = ['audio/wav', 'audio/x-wav', 'audio/wave']
@@ -100,3 +100,12 @@ class ProjectModel(BaseModel):
     jwt: str = Field(...)
     name: str = Field(..., min_length=1, max_length=16)
     description: str = Field(..., min_length=0, max_length=256)
+    format_type: str = Field(default="UPCT", pattern="^(UPCT|RETOR)$")
+
+
+class FormatInfo(BaseModel):
+    """Información básica de un formato de debate."""
+    codigo: str = Field(..., description="Código del formato (UPCT o RETOR)")
+    nombre: str = Field(..., description="Nombre completo del formato")
+    descripcion: str = Field(..., description="Descripción del formato")
+    num_fases: int = Field(..., description="Número de fases del formato")

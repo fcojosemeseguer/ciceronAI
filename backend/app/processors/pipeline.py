@@ -10,7 +10,11 @@ import os
 from dotenv import load_dotenv
 
 from app.services.ai_engine import TinyDBChatMessageHistory
-from data.prompts.prompts import system_prompt_evaluation
+from data.prompts.prompts import system_prompt_evaluation, system_prompt_retor
+from app.core.database import get_project_format
+from app.core.debate_formats import (
+    DebateFormat, get_formato_config, get_fases_mapping, get_criterios_por_fase
+)
 
 load_dotenv()
 if not os.getenv("OPENAI_API_KEY"):
@@ -152,16 +156,31 @@ class ChatSession:
 
     Mantiene el historial de conversación y permite enviar evaluaciones
     estructuradas al LLM juez de debate.
+    Soporta múltiples formatos: UPCT y RETOR.
     """
 
     def __init__(self, project_id: str, session_id: str, db_path: str = "db.json"):
         self.project_id = project_id
         self.session_id = session_id
         self.db_path = db_path
+        self.format_type = self._detect_format()
         self._history = TinyDBChatMessageHistory(
             session_id, project_id, db_path)
         self._chain = self._setup_chain()
         self._chain_with_history = self._setup_chain_with_history()
+
+    def _detect_format(self) -> str:
+        """Detecta el formato del proyecto."""
+        try:
+            return get_project_format(self.project_id)
+        except Exception:
+            return DebateFormat.UPCT
+
+    def _get_system_prompt(self) -> str:
+        """Obtiene el prompt del sistema según el formato."""
+        if self.format_type == DebateFormat.RETOR:
+            return system_prompt_retor
+        return system_prompt_evaluation
 
     def _setup_chain(self):
         """Configura el chain de LangChain."""
@@ -169,7 +188,7 @@ class ChatSession:
         llm = ChatOpenAI(model="gpt-5-2025-08-07", temperature=0)
 
         prompt = ChatPromptTemplate.from_messages([
-            ("system", system_prompt_evaluation),
+            ("system", self._get_system_prompt()),
             MessagesPlaceholder(variable_name="history"),
             ("human", "{input}"),
         ])
@@ -223,15 +242,31 @@ class ChatSession:
 
         return "\n".join(lines)
 
-    def _get_parser_for_fase(self, fase: DebateFase) -> PydanticOutputParser:
+    def _get_criterios_for_fase(self, fase) -> list:
+        """Obtiene los criterios según el formato y fase."""
+        criterios = get_criterios_por_fase(self.format_type, fase.value)
+        if not criterios:
+            # Fallback a criterios UPCT si no se encuentra
+            if hasattr(fase, 'value') and fase.value in CRITERIOS_POR_FASE:
+                return CRITERIOS_POR_FASE[fase]
+        return criterios
+
+    def _is_final_fase(self, fase) -> bool:
+        """Determina si es la fase final según el formato."""
+        fase_value = fase.value if hasattr(fase, 'value') else str(fase)
+        if self.format_type == DebateFormat.RETOR:
+            return False  # RETOR no tiene fase "Final" separada
+        return fase_value == "Final"
+
+    def _get_parser_for_fase(self, fase) -> PydanticOutputParser:
         """Retorna el parser adecuado según la fase."""
-        if fase == DebateFase.FINAL:
+        if self._is_final_fase(fase):
             return PydanticOutputParser(pydantic_object=FinalEvaluationOutput)
         return PydanticOutputParser(pydantic_object=EvaluationOutput)
 
     def _build_evaluation_prompt(
         self,
-        fase: DebateFase,
+        fase,
         postura: Postura,
         orador: str,
         transcripcion: list[dict],
@@ -240,7 +275,7 @@ class ChatSession:
     ) -> str:
         """Construye el prompt de evaluación formateado."""
         parser = self._get_parser_for_fase(fase)
-        criterios = CRITERIOS_POR_FASE[fase]
+        criterios = self._get_criterios_for_fase(fase)
 
         prompt_parts = [
             f"FASE: {fase.value}",
@@ -273,7 +308,7 @@ class ChatSession:
 
     def send_evaluation(
         self,
-        fase: DebateFase,
+        fase,
         postura: Postura,
         orador: str,
         transcripcion: list[dict],
@@ -282,9 +317,10 @@ class ChatSession:
     ) -> EvaluationResult:
         """
         Envía una evaluación al LLM y retorna el resultado estructurado.
+        Soporta múltiples formatos: UPCT y RETOR.
 
         Args:
-            fase: Fase del debate (INTRO, REF1, REF2, CONCLUSION, FINAL)
+            fase: Fase del debate (DebateFaseUPCT o DebateFaseRETOR)
             postura: Postura del equipo (FAVOR o CONTRA)
             orador: Identificador del orador
             transcripcion: Lista de segmentos con speaker, text, start, end

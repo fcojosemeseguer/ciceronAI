@@ -4,7 +4,7 @@
  */
 
 import React, { useState, useEffect } from 'react';
-import { AuthScreen, HomeScreen, SetupScreen, CompetitionScreen, DebateDetailsScreen, ScoringScreen, LandingPage } from './components/screens';
+import { AuthScreen, HomeScreen, SetupScreen, CompetitionScreen, DebateDetailsScreen, ScoringScreen, LandingPage, ManualUploadScreen } from './components/screens';
 import { useAuthStore } from './store/authStore';
 import { useDebateHistoryStore } from './store/debateHistoryStore';
 import { useDebateStore } from './store/debateStore';
@@ -13,7 +13,7 @@ import { Dock, LiquidGlassButton } from './components/common';
 import { Home, ArrowLeft, UserCircle, Settings, Plus, AlertTriangle } from 'lucide-react';
 import './App.css';
 
-type AppScreen = 'landing' | 'auth' | 'home' | 'setup' | 'competition' | 'scoring' | 'debate-details';
+type AppScreen = 'landing' | 'auth' | 'home' | 'setup' | 'competition' | 'scoring' | 'debate-details' | 'manual-upload';
 
 function App() {
   const { checkAuth } = useAuthStore();
@@ -27,16 +27,19 @@ function App() {
   }, [checkAuth]);
 
   const handleGoToLanding = () => setCurrentScreen('landing');
-  const [pendingRedirectAfterAuth, setPendingRedirectAfterAuth] = useState<'home' | null>(null);
+  const [pendingRedirectAfterAuth, setPendingRedirectAfterAuth] = useState<'home' | 'manual-upload' | null>(null);
   const handleAuthenticated = () => {
-    if (pendingRedirectAfterAuth) {
-      setCurrentScreen(pendingRedirectAfterAuth);
+    if (pendingRedirectAfterAuth === 'manual-upload') {
+      setCurrentScreen('manual-upload');
+      setPendingRedirectAfterAuth(null);
+    } else if (pendingRedirectAfterAuth === 'home') {
+      setCurrentScreen('home');
       setPendingRedirectAfterAuth(null);
     } else {
       setCurrentScreen('landing');
     }
   };
-  const handleGoToAuth = (redirectTo?: 'home') => {
+  const handleGoToAuth = (redirectTo?: 'home' | 'manual-upload') => {
     if (redirectTo) {
       setPendingRedirectAfterAuth(redirectTo);
     }
@@ -44,6 +47,11 @@ function App() {
   };
   const handleNewDebate = () => setCurrentScreen('setup');
   const handleStartDebateFromLanding = () => setCurrentScreen('home');
+  const handleManualUpload = () => setCurrentScreen('manual-upload');
+  const handleManualUploadComplete = (projectCode: string) => {
+    // Navigate to debate details or scoring screen
+    setCurrentScreen('home');
+  };
   
   const handleViewDebate = (debate: DebateHistory) => {
     selectDebate(debate);
@@ -76,7 +84,7 @@ function App() {
   const handleFinishScoring = () => setCurrentScreen('home');
 
   // Determinar si mostrar el dock (solo en pantallas de la app, no en landing/auth)
-  const showDock = ['home', 'setup', 'competition', 'scoring', 'debate-details'].includes(currentScreen);
+  const showDock = ['home', 'setup', 'competition', 'scoring', 'debate-details', 'manual-upload'].includes(currentScreen);
 
   const { state: debateState } = useDebateStore();
 
@@ -157,7 +165,7 @@ function App() {
   const renderScreen = () => {
     switch (currentScreen) {
       case 'landing':
-        return <LandingPage onStartDebate={handleStartDebateFromLanding} onLogin={handleGoToAuth} />;
+        return <LandingPage onStartDebate={handleStartDebateFromLanding} onLogin={handleGoToAuth} onManualUpload={handleManualUpload} />;
 
       case 'auth':
         return <AuthScreen onAuthenticated={handleAuthenticated} onBack={handleGoToLanding} redirectTo={pendingRedirectAfterAuth} />;
@@ -174,6 +182,13 @@ function App() {
           <DebateDetailsScreen debate={selectedDebate} onBack={handleBackToHome} />
         ) : (
           <HomeScreen onNewDebate={handleNewDebate} onViewDebate={handleViewDebate} onBack={handleGoToLanding} />
+        );
+      case 'manual-upload':
+        return (
+          <ManualUploadScreen 
+            onBack={() => setCurrentScreen('landing')} 
+            onComplete={handleManualUploadComplete} 
+          />
         );
       default:
         return <LandingPage onStartDebate={handleStartDebateFromLanding} onLogin={handleGoToAuth} />;

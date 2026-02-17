@@ -7,15 +7,16 @@ import re
 
 
 class CredsInput(BaseModel):
-    user: str = Field(..., min_length=3, max_length=20)
+    user: str = Field(..., min_length=3, max_length=100)
     pswd: str = Field(..., min_length=8, max_length=32)
+    name: str = Field(default="", max_length=100)
 
     @field_validator('user')
     @classmethod
     def validate_user(cls, v):
-        if not re.match(r'^[a-zA-Z0-9_]+$', v):
-            raise ValueError(
-                'El usuario solo permite letras, números y guiones bajos')
+        # Solo aceptar formato de email
+        if not re.match(r'^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$', v):
+            raise ValueError('Formato de email inválido')
         return v
 
     @field_validator('pswd')

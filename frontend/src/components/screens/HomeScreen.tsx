@@ -1,9 +1,10 @@
 /**
  * HomeScreen - Página de inicio principal
  * Diseño moderno con Aurora background y Glassmorphism
+ * INTEGRACIÓN: Carga proyectos desde el backend
  */
 
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import {
   Plus,
   History,
@@ -14,8 +15,10 @@ import {
   Search,
   Filter,
   Trash2,
+  Loader2,
+  RefreshCw,
 } from 'lucide-react';
-import { useDebateHistoryStore } from '../../store/debateHistoryStore';
+import { useProjectStore } from '../../store/projectStore';
 import { DebateHistory } from '../../types';
 import { LiquidGlassButton } from '../common';
 
@@ -26,12 +29,19 @@ interface HomeScreenProps {
 }
 
 export const HomeScreen: React.FC<HomeScreenProps> = ({ onNewDebate, onViewDebate }) => {
-  const { getDebatesSortedByDate, deleteDebate } = useDebateHistoryStore();
+  const { projects, isLoading, error, loadProjects, deleteProject, clearError } = useProjectStore();
   const [searchTerm, setSearchTerm] = useState('');
   const [filterWinner, setFilterWinner] = useState<'all' | 'A' | 'B' | 'draw'>('all');
   const [debateToDelete, setDebateToDelete] = useState<DebateHistory | null>(null);
 
-  const sortedDebates = getDebatesSortedByDate();
+  // Cargar proyectos al montar el componente
+  useEffect(() => {
+    loadProjects();
+  }, [loadProjects]);
+
+  const sortedDebates = [...projects].sort((a, b) => 
+    new Date(b.date).getTime() - new Date(a.date).getTime()
+  );
   
   const filteredDebates = sortedDebates.filter(debate => {
     const matchesSearch = debate.topic.toLowerCase().includes(searchTerm.toLowerCase()) ||
@@ -76,9 +86,13 @@ export const HomeScreen: React.FC<HomeScreenProps> = ({ onNewDebate, onViewDebat
 
   const handleConfirmDelete = () => {
     if (debateToDelete) {
-      deleteDebate(debateToDelete.id);
+      deleteProject(debateToDelete.id);
       setDebateToDelete(null);
     }
+  };
+
+  const handleRefresh = () => {
+    loadProjects();
   };
 
   return (
@@ -110,6 +124,19 @@ export const HomeScreen: React.FC<HomeScreenProps> = ({ onNewDebate, onViewDebat
             </LiquidGlassButton>
           </div>
 
+          {/* Error Message */}
+          {error && (
+            <div className="mb-6 p-4 bg-red-500/20 border border-red-500/50 rounded-xl text-red-300 text-center">
+              <p>{error}</p>
+              <button 
+                onClick={clearError}
+                className="mt-2 text-sm text-red-400 hover:text-red-300 underline"
+              >
+                Cerrar
+              </button>
+            </div>
+          )}
+
           {/* Debate History Section */}
           <div className="
             bg-[#1a1f2e]
@@ -128,9 +155,19 @@ export const HomeScreen: React.FC<HomeScreenProps> = ({ onNewDebate, onViewDebat
                     <History className="w-5 h-5 text-white/80" />
                   </div>
                   <h2 className="text-xl font-bold text-white">Historial de Debates</h2>
+                  {isLoading && <Loader2 className="w-4 h-4 text-white/50 animate-spin" />}
                 </div>
                 
                 <div className="flex flex-col sm:flex-row gap-3">
+                  <button
+                    onClick={handleRefresh}
+                    disabled={isLoading}
+                    className="p-2 rounded-xl bg-white/5 border border-white/10 text-white/50 hover:text-white hover:bg-white/10 transition-colors disabled:opacity-50"
+                    title="Actualizar lista"
+                  >
+                    <RefreshCw className={`w-4 h-4 ${isLoading ? 'animate-spin' : ''}`} />
+                  </button>
+                  
                   <div className="relative">
                     <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-white/40" />
                     <input
@@ -179,7 +216,12 @@ export const HomeScreen: React.FC<HomeScreenProps> = ({ onNewDebate, onViewDebat
 
             {/* Debates List */}
             <div className="divide-y divide-white/5 overflow-y-auto flex-1 scrollbar-hide">
-              {filteredDebates.length === 0 ? (
+              {isLoading && projects.length === 0 ? (
+                <div className="p-12 text-center">
+                  <Loader2 className="w-8 h-8 text-white/30 animate-spin mx-auto mb-4" />
+                  <p className="text-white/50">Cargando debates...</p>
+                </div>
+              ) : filteredDebates.length === 0 ? (
                 <div className="p-12 text-center">
                   <div className="w-16 h-16 mx-auto mb-4 rounded-2xl bg-white/5 flex items-center justify-center">
                     <MessageSquare className="w-8 h-8 text-white/30" />

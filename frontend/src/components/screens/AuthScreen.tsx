@@ -3,7 +3,7 @@
  * Estilo Aurora con colores naranja/cian
  */
 
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { useAuthStore } from '../../store/authStore';
 import { Mail, Lock, User, Loader2, Eye, EyeOff, ArrowLeft } from 'lucide-react';
 import { LiquidGlassButton } from '../common';
@@ -11,7 +11,7 @@ import { LiquidGlassButton } from '../common';
 interface AuthScreenProps {
   onAuthenticated: () => void;
   onBack?: () => void;
-  redirectTo?: 'home' | null;
+  redirectTo?: 'home' | 'manual-upload' | null;
 }
 
 export const AuthScreen: React.FC<AuthScreenProps> = ({ onAuthenticated, onBack, redirectTo }) => {
@@ -24,10 +24,20 @@ export const AuthScreen: React.FC<AuthScreenProps> = ({ onAuthenticated, onBack,
   });
 
   const { login, register, isLoading, error, clearError } = useAuthStore();
+  const [passwordError, setPasswordError] = useState<string | null>(null);
+
+  // Detectar errores de login y mostrarlos debajo del campo de contraseña
+  useEffect(() => {
+    if (error && isLogin) {
+      // Si es un error de login, mostrarlo debajo de la contraseña
+      setPasswordError('Contraseña incorrecta');
+    }
+  }, [error, isLogin]);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     clearError();
+    setPasswordError(null);
 
     let success;
     if (isLogin) {
@@ -45,11 +55,13 @@ export const AuthScreen: React.FC<AuthScreenProps> = ({ onAuthenticated, onBack,
     const { name, value } = e.target;
     setFormData(prev => ({ ...prev, [name]: value }));
     if (error) clearError();
+    if (passwordError && name === 'password') setPasswordError(null);
   };
 
   const toggleMode = () => {
     setIsLogin(!isLogin);
     clearError();
+    setPasswordError(null);
     setFormData({ name: '', email: '', password: '' });
   };
 
@@ -87,6 +99,7 @@ export const AuthScreen: React.FC<AuthScreenProps> = ({ onAuthenticated, onBack,
                     <User className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-white/40" />
                     <input
                       type="text"
+                      id="name"
                       name="name"
                       value={formData.name}
                       onChange={handleInputChange}
@@ -103,9 +116,9 @@ export const AuthScreen: React.FC<AuthScreenProps> = ({ onAuthenticated, onBack,
                         bg-transparent
                       "
                       required={!isLogin}
-                      autoComplete="off"
+                      autoComplete="name"
                       autoCorrect="off"
-                      autoCapitalize="off"
+                      autoCapitalize="words"
                       spellCheck="false"
                     />
                   </div>
@@ -121,10 +134,11 @@ export const AuthScreen: React.FC<AuthScreenProps> = ({ onAuthenticated, onBack,
                   <Mail className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-white/40" />
                   <input
                     type="email"
+                    id="email"
                     name="email"
                     value={formData.email}
                     onChange={handleInputChange}
-                    placeholder="tu@email.com"
+                    placeholder="usuario@email.com"
                     className="
                       w-full pl-10 pr-4 py-3
                       bg-white/5
@@ -136,13 +150,16 @@ export const AuthScreen: React.FC<AuthScreenProps> = ({ onAuthenticated, onBack,
                       appearance-none
                       bg-transparent
                     "
+                    minLength={3}
+                    maxLength={100}
                     required
-                    autoComplete="off"
+                    autoComplete="username"
                     autoCorrect="off"
                     autoCapitalize="off"
                     spellCheck="false"
                   />
                 </div>
+                <p className="text-xs text-white/40 mt-1">Introduce tu correo electrónico</p>
               </div>
 
               {/* Campo de contraseña */}
@@ -154,6 +171,7 @@ export const AuthScreen: React.FC<AuthScreenProps> = ({ onAuthenticated, onBack,
                   <Lock className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-white/40" />
                   <input
                     type={showPassword ? 'text' : 'password'}
+                    id="password"
                     name="password"
                     value={formData.password}
                     onChange={handleInputChange}
@@ -170,8 +188,9 @@ export const AuthScreen: React.FC<AuthScreenProps> = ({ onAuthenticated, onBack,
                       bg-transparent
                     "
                     required
-                    minLength={6}
-                    autoComplete="off"
+                    minLength={8}
+                    maxLength={32}
+                    autoComplete={isLogin ? "current-password" : "new-password"}
                     autoCorrect="off"
                     autoCapitalize="off"
                     spellCheck="false"
@@ -184,11 +203,15 @@ export const AuthScreen: React.FC<AuthScreenProps> = ({ onAuthenticated, onBack,
                     {showPassword ? <EyeOff className="w-5 h-5" /> : <Eye className="w-5 h-5" />}
                   </button>
                 </div>
-                <p className="text-xs text-white/40 mt-1">Mínimo 6 caracteres</p>
+                {passwordError ? (
+                  <p className="text-xs text-[#FF6B00] mt-1 font-medium">{passwordError}</p>
+                ) : (
+                  <p className="text-xs text-white/40 mt-1">8-32 caracteres, letras, números y guiones bajos. Debe incluir al menos una letra y un número.</p>
+                )}
               </div>
 
-              {/* Error message */}
-              {error && (
+              {/* Error message general (solo para registro) */}
+              {error && !isLogin && (
                 <div className="p-3 bg-[#1F2A33]/50 border border-[#1F2A33] rounded-lg">
                   <p className="text-sm text-white/80 text-center">{error}</p>
                 </div>

@@ -27,7 +27,9 @@
     "start": "react-scripts start",
     "build": "react-scripts build",
     "test": "react-scripts test",
-    "eject": "react-scripts eject"
+    "eject": "react-scripts eject",
+    "dev": "react-scripts start",
+    "start:full": "echo 'Para ejecutar frontend y backend juntos, usa:' && echo 'Terminal 1: cd backend && python -m uvicorn main:app --reload --port 5000' && echo 'Terminal 2: cd frontend && npm start'"
   },
   "eslintConfig": {
     "extends": [

@@ -15,6 +15,7 @@ import {
   generateDebateRounds,
   getCurrentRoundInfo,
   isLastRound,
+  getDefaultDurations,
 } from '../utils/roundsSequence';
 
 // Estado inicial por defecto
@@ -22,23 +23,32 @@ const defaultConfig: DebateConfig = {
   teamAName: 'Equipo A',
   teamBName: 'Equipo B',
   debateTopic: 'Tema del Debate',
-  roundDurations: {
-    introduccion: 180,
-    primerRefutador: 240,
-    segundoRefutador: 240,
-    conclusion: 180,
-  },
+  formatType: 'UPCT',
+  roundDurations: getDefaultDurations('UPCT'),
 };
 
-const createInitialState = (config: DebateConfig): DebateSessionState => ({
-  config,
-  state: 'setup',
-  currentRoundIndex: 0,
-  currentTeam: 'A',
-  timeRemaining: config.roundDurations.introduccion,
-  isTimerRunning: false,
-  recordings: [],
-});
+const createInitialState = (config: DebateConfig): DebateSessionState => {
+  const formatType = config.formatType || 'UPCT';
+  const durations = config.roundDurations;
+  
+  // Determinar el tiempo inicial según el formato
+  let initialTime: number;
+  if (formatType === 'RETOR') {
+    initialTime = durations.contextualizacion || 360;
+  } else {
+    initialTime = durations.introduccion || 180;
+  }
+  
+  return {
+    config,
+    state: 'setup',
+    currentRoundIndex: 0,
+    currentTeam: 'A',
+    timeRemaining: initialTime,
+    isTimerRunning: false,
+    recordings: [],
+  };
+};
 
 interface DebateStore extends DebateSessionState {
   // Inicialización
@@ -83,15 +93,7 @@ export const useDebateStore = create<DebateStore>()(
 
     // Inicialización
     initializeDebate: (config: DebateConfig) => {
-      set({
-        config,
-        state: 'setup',
-        currentRoundIndex: 0,
-        currentTeam: 'A',
-        timeRemaining: config.roundDurations.introduccion,
-        isTimerRunning: false,
-        recordings: [],
-      });
+      set(createInitialState(config));
     },
 
     // Control de tiempo
@@ -271,12 +273,14 @@ export const useDebateStore = create<DebateStore>()(
 
     isLastRound: () => {
       const state = get();
-      return isLastRound(state.currentRoundIndex);
+      const formatType = state.config.formatType || 'UPCT';
+      return isLastRound(state.currentRoundIndex, formatType);
     },
 
     canGoToNextRound: () => {
       const state = get();
-      return !isLastRound(state.currentRoundIndex);
+      const formatType = state.config.formatType || 'UPCT';
+      return !isLastRound(state.currentRoundIndex, formatType);
     },
 
     canGoToPreviousRound: () => {

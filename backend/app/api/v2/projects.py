@@ -1,6 +1,16 @@
-from app.api.v2.models import ProjectModel
-from app.core.database import create_analysis, create_project, check_team, save_audio_path, check_user_existence, get_audio_path, save_transcription, get_transcription, save_metrics, get_postura, get_orador, get_saved_transcription_diarization, get_saved_metrics
+from app.api.v2.models import ProjectModel, FormatInfo
+from app.core.database import (
+    create_analysis, create_project, check_team, save_audio_path, 
+    check_user_existence, get_audio_path as get_db_audio_path, 
+    save_transcription as save_db_transcription, 
+    get_transcription as get_db_transcription, 
+    save_metrics as save_db_metrics, get_postura, get_orador, 
+    get_saved_transcription_diarization, get_saved_metrics, get_project_format
+)
 from app.processors.pipeline import DebateFase, Postura, create_chat
+from app.core.debate_formats import (
+    DebateFormat, get_formatos_disponibles, get_fases_mapping, validar_formato
+)
 from app.services.transcription import split_audio
 from app.services.metrics import process_complete_analysis
 
@@ -50,17 +60,54 @@ key_metrics_names = [
 chats = {}
 
 
+@router.get("/formats", response_model=list[FormatInfo])
+async def get_formats():
+    """
+    Obtiene la lista de formatos de debate disponibles.
+    
+    Returns:
+        Lista de formatos (UPCT y RETOR) con información básica
+    """
+    try:
+        return get_formatos_disponibles()
+    except Exception as e:
+        raise HTTPException(500, str(e))
+
+
 @router.post("/projects")
-async def create_project(data: ProjectModel):
+async def create_project_endpoint(data: ProjectModel):
+    """
+    Crea un nuevo proyecto de debate.
+    
+    Args:
+        data: Datos del proyecto incluyendo nombre, descripción y tipo de formato
+    
+    Returns:
+        Código del proyecto creado
+    """
     try:
         dec_jwt = jwt.decode(data.jwt, SECRET_KEY, ALGORITHM)
         user_code = dec_jwt["user_code"]
-        payload = {"name": data.name,
-                   "desc": data.desc, "user_code": user_code}
+        
+        # Validar formato
+        if not validar_formato(data.format_type):
+            raise ValueError(f"Formato '{data.format_type}' no válido. Use 'UPCT' o 'RETOR'")
+        
+        payload = {
+            "name": data.name,
+            "desc": data.description, 
+            "user_code": user_code,
+            "format_type": data.format_type
+        }
         project_code = create_project(payload)
-        return {"status": "project creation succeeded", "project_code": project_code}
+        
+        return {
+            "status": "project creation succeeded", 
+            "project_code": project_code,
+            "format_type": data.format_type
+        }
     except Exception as e:
-        raise HTTPException(500, e)
+        raise HTTPException(500, str(e))
 
 
 @router.post("/projects/{project_code}/audio")
@@ -109,7 +156,7 @@ async def get_transcription(
         if not check_user_existence(dec_jwt["user_code"]):
             raise HTTPException(401, "invalid jwt")
 
-        file_path = get_audio_path(project_code, fase, equipo)
+        file_path = get_db_audio_path(project_code, fase, equipo)
         if not file_path:
             raise HTTPException(500)
 
@@ -118,7 +165,7 @@ async def get_transcription(
         transcript = analysis_data["transcript"]
         diarization_raw = analysis_data["diarization_raw"]
 
-        save_transcription(file_path, transcript, diarization_raw)
+        save_db_transcription(file_path, transcript, diarization_raw)
 
         return {"status": "succeeded", "transcript": transcript, "diarization_raw": diarization_raw}
 
@@ -137,13 +184,13 @@ async def get_prosody(
         if not check_user_existence(dec_jwt["user_code"]):
             raise HTTPException(401, "invalid jwt")
 
-        file_path = get_audio_path(project_code, fase, equipo)
-        data = get_transcription(file_path)
+        file_path = get_db_audio_path(project_code, fase, equipo)
+        data = get_db_transcription(file_path)
 
         result = process_complete_analysis(
             file_path, data["transcript"], data["diarization"])
 
-        save_metrics(file_path, result)
+        save_db_metrics(file_path, result)
 
         return {"status": "succeeded", "metrics": result}
     except Exception as e:
@@ -156,20 +203,34 @@ async def get_interpretation(
         enc_jwt: str,
         fase: str,
         equipo: str):
+    """
+    Obtiene la interpretación/evaluación de una intervención.
+    
+    Soporta automáticamente los formatos UPCT y RETOR según la configuración del proyecto.
+    """
     try:
         dec_jwt = jwt.decode(enc_jwt, SECRET_KEY, ALGORITHM)
         if not check_user_existence(dec_jwt["user_code"]):
             raise HTTPException(401, "invalid jwt")
 
-        file_path = get_audio_path(project_code, fase, equipo)
-        if fase not in ["Introducción", "Refutación 1", "Refutación 2", "Conclusión", "Final"]:
-            raise ValueError(f"{fase} is not a valid phase")
+        file_path = get_db_audio_path(project_code, fase, equipo)
+        
+        # Obtener el formato del proyecto
+        format_type = get_project_format(project_code)
+        
+        # Obtener mapeo de fases según el formato
+        fases_mapping = get_fases_mapping(format_type)
+        valid_fases = list(fases_mapping.keys())
+        
+        if fase not in valid_fases:
+            raise ValueError(f"{fase} is not a valid phase for format {format_type}")
+        
         postura = get_postura(equipo)
         if postura not in ["A Favor", "En Contra"]:
             raise ValueError(f"{postura} is not valid")
 
-        fase = fases[fase]
-        postura = posturas[postura]
+        fase_enum = fases_mapping[fase]
+        postura_enum = posturas[postura]
         orador, num_speakers = get_orador(file_path)
 
         if chats.get(project_code) == None:
@@ -188,8 +249,8 @@ async def get_interpretation(
             duracion = None
 
         resultado = chat.send_evaluation(
-            fase=fase,
-            postura=postura,
+            fase=fase_enum,
+            postura=postura_enum,
             orador=orador,
             transcripcion=transcription,
             metricas=metrics,
@@ -222,10 +283,11 @@ async def get_interpretation(
                 "orador": resultado.orador,
                 "criterios": criterios,
                 "total": total,
-                "max_total": len(resultado.puntuaciones) * 4
+                "max_total": len(resultado.puntuaciones) * 4,
+                "format_type": format_type
             }
         else:
             raise RuntimeError("error while saving data")
 
     except Exception as e:
-        HTTPException(500, e)
+        raise HTTPException(500, str(e))

@@ -6,14 +6,15 @@
 import React, { useEffect, useState } from 'react';
 import { useAuthStore } from '../../store/authStore';
 import { AuroraBackground, CardNav, LiquidGlassButton } from '../common';
-import { MessageSquare, Trophy, Sparkles, Mic, Users, Brain, Clock, Github, Linkedin, Twitter } from 'lucide-react';
+import { MessageSquare, Trophy, Sparkles, Mic, Users, Brain, Clock, Github, Linkedin, Twitter, Upload } from 'lucide-react';
 
 interface LandingPageProps {
   onStartDebate: () => void;
-  onLogin: (redirectTo?: 'home') => void;
+  onLogin: (redirectTo?: 'home' | 'manual-upload') => void;
+  onManualUpload?: () => void;
 }
 
-export const LandingPage: React.FC<LandingPageProps> = ({ onStartDebate, onLogin }) => {
+export const LandingPage: React.FC<LandingPageProps> = ({ onStartDebate, onLogin, onManualUpload }) => {
   const { isAuthenticated } = useAuthStore();
   const [activeSection, setActiveSection] = useState('home');
 
@@ -22,6 +23,14 @@ export const LandingPage: React.FC<LandingPageProps> = ({ onStartDebate, onLogin
       onStartDebate();
     } else {
       onLogin('home');
+    }
+  };
+
+  const handleManualUpload = () => {
+    if (isAuthenticated && onManualUpload) {
+      onManualUpload();
+    } else {
+      onLogin('manual-upload');
     }
   };
 
@@ -126,8 +135,8 @@ export const LandingPage: React.FC<LandingPageProps> = ({ onStartDebate, onLogin
               El Juez IA de Debate
             </h2>
 
-            {/* Botón CTA */}
-            <div className="flex flex-col sm:flex-row items-center justify-center gap-4 mb-16">
+            {/* Botones CTA */}
+            <div className="flex flex-col items-center gap-3 mb-16">
               <button
                 onClick={handleStartDebate}
                 className="group relative px-12 py-5 text-2xl font-bold transition-all duration-300 hover:scale-105 rounded-2xl"
@@ -139,6 +148,14 @@ export const LandingPage: React.FC<LandingPageProps> = ({ onStartDebate, onLogin
                 <span className="bg-gradient-to-r from-[#FF6B00] to-[#00E5FF] bg-clip-text text-transparent">
                   Empezar un Debate
                 </span>
+              </button>
+              
+              <button
+                onClick={handleManualUpload}
+                className="group relative px-6 py-3 text-base font-medium transition-all duration-300 hover:scale-105 rounded-xl backdrop-blur-xl bg-white/5 border border-white/20 hover:bg-white/10 flex items-center gap-2 text-white/70 hover:text-white"
+              >
+                <Upload className="w-4 h-4" />
+                <span>Analizar debate grabado</span>
               </button>
             </div>
 

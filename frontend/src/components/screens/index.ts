@@ -11,3 +11,4 @@ export { ScoringScreen } from './ScoringScreen';
 export { LandingPage } from './LandingPage';
 export { HowItWorksScreen } from './HowItWorksScreen';
 export { TeamScreen } from './TeamScreen';
+export { ManualUploadScreen } from './ManualUploadScreen';

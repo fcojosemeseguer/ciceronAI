@@ -1,9 +1,11 @@
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
-from app.api.v1.endpoints import router as router
+from app.api.v1.endpoints import router as router_v1
+from app.api.v2.projects import router as router_v2
 
 app = FastAPI(title="CiceronAI")
-app.include_router(router, prefix="/api/v1")
+app.include_router(router_v1, prefix="/api/v1")
+app.include_router(router_v2, prefix="/api/v2")
 
 app.add_middleware(
     CORSMiddleware,

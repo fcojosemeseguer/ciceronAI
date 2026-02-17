@@ -4,9 +4,28 @@
  */
 
 import jsPDF from 'jspdf';
-import { DebateScoringResult, DEBATE_RUBRIC } from '../types';
+import { DebateScoringResult, DEBATE_RUBRIC, RETOR_RUBRIC } from '../types';
+
+// Función para obtener la rúbrica según el formato detectado
+const getRubricFromResult = (scoringResult: DebateScoringResult) => {
+  // Detectar si es RETOR basándose en los roundTypes
+  const hasRetorRounds = scoringResult.teamAScore.roundScores.some(
+    r => ['contextualizacion', 'definicion', 'valoracion'].includes(r.roundType)
+  );
+  return hasRetorRounds ? RETOR_RUBRIC : DEBATE_RUBRIC;
+};
+
+// Función para obtener la puntuación máxima
+const getMaxScoreFromResult = (scoringResult: DebateScoringResult) => {
+  const hasRetorRounds = scoringResult.teamAScore.roundScores.some(
+    r => ['contextualizacion', 'definicion', 'valoracion'].includes(r.roundType)
+  );
+  return hasRetorRounds ? 5 : 4;
+};
 
 export const generateDebatePDF = async (scoringResult: DebateScoringResult): Promise<void> => {
+  const rubric = getRubricFromResult(scoringResult);
+  const maxScore = getMaxScoreFromResult(scoringResult);
   const doc = new jsPDF();
   const pageWidth = doc.internal.pageSize.getWidth();
   const margin = 20;
@@ -69,7 +88,7 @@ export const generateDebatePDF = async (scoringResult: DebateScoringResult): Pro
   yPos += 20;
 
   // Rúbrica por rondas
-  DEBATE_RUBRIC.forEach((section) => {
+  rubric.forEach((section) => {
     // Nueva página si es necesario
     if (yPos > 220) {
       doc.addPage();
@@ -137,7 +156,7 @@ export const generateDebatePDF = async (scoringResult: DebateScoringResult): Pro
   
   doc.setFontSize(10);
   doc.setTextColor(0, 0, 0);
-  addText(`Conexión entre miembros: ${scoringResult.teamAScore.teamConnectionScore}/4`, margin, yPos);
+  addText(`Conexión entre miembros: ${scoringResult.teamAScore.teamConnectionScore}/${maxScore}`, margin, yPos);
   yPos += 8;
   
   if (scoringResult.teamAScore.bestSpeaker) {
@@ -160,7 +179,7 @@ export const generateDebatePDF = async (scoringResult: DebateScoringResult): Pro
   
   doc.setFontSize(10);
   doc.setTextColor(0, 0, 0);
-  addText(`Conexión entre miembros: ${scoringResult.teamBScore.teamConnectionScore}/4`, margin, yPos);
+  addText(`Conexión entre miembros: ${scoringResult.teamBScore.teamConnectionScore}/${maxScore}`, margin, yPos);
   yPos += 8;
   
   if (scoringResult.teamBScore.bestSpeaker) {

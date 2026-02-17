@@ -19,12 +19,13 @@ import {
 import { useDebateStore } from '../../store/debateStore';
 import { useDebateHistoryStore } from '../../store/debateHistoryStore';
 import { 
-  DEBATE_RUBRIC, 
+  DEBATE_RUBRIC,
+  RETOR_RUBRIC,
   DetailedTeamScore, 
   DebateScoringResult,
   TeamPosition,
   SpeakerRoundScore,
-  RubricRoundType
+  RubricSection
 } from '../../types';
 import { generateDebatePDF } from '../../utils/pdfGenerator';
 
@@ -37,16 +38,32 @@ interface EditableScores {
   [key: string]: { score: number };
 }
 
-const getScoreColor = (score: number) => {
-  if (score >= 4) return 'text-green-400';
-  if (score >= 3) return 'text-[#00E5FF]';
+// Función para obtener la rúbrica según el formato
+const getRubric = (formatType: string | undefined): RubricSection[] => {
+  return formatType === 'RETOR' ? RETOR_RUBRIC : DEBATE_RUBRIC;
+};
+
+// Función para obtener la puntuación máxima según el formato
+const getMaxScore = (formatType: string | undefined): number => {
+  return formatType === 'RETOR' ? 5 : 4;
+};
+
+const getScoreColor = (score: number, maxScore: number = 4) => {
+  const threshold = maxScore === 5 ? 4 : 3; // 80% del máximo
+  const goodThreshold = maxScore === 5 ? 3 : 2; // 60% del máximo
+  
+  if (score >= threshold) return 'text-green-400';
+  if (score >= goodThreshold) return 'text-[#00E5FF]';
   if (score >= 2) return 'text-yellow-400';
   return 'text-[#FF6B00]';
 };
 
-const getScoreBgColor = (score: number) => {
-  if (score >= 4) return 'bg-green-500/20 border-green-500/30';
-  if (score >= 3) return 'bg-[#00E5FF]/20 border-[#00E5FF]/30';
+const getScoreBgColor = (score: number, maxScore: number = 4) => {
+  const threshold = maxScore === 5 ? 4 : 3;
+  const goodThreshold = maxScore === 5 ? 3 : 2;
+  
+  if (score >= threshold) return 'bg-green-500/20 border-green-500/30';
+  if (score >= goodThreshold) return 'bg-[#00E5FF]/20 border-[#00E5FF]/30';
   if (score >= 2) return 'bg-yellow-500/20 border-yellow-500/30';
   return 'bg-[#FF6B00]/20 border-[#FF6B00]/30';
 };
@@ -59,12 +76,7 @@ export const ScoringScreen: React.FC<ScoringScreenProps> = ({ onFinish, onBack }
   const [isGeneratingPDF, setIsGeneratingPDF] = useState(false);
   const [isEditing, setIsEditing] = useState(false);
   const [editableScores, setEditableScores] = useState<EditableScores>({});
-  const [expandedRounds, setExpandedRounds] = useState<Record<RubricRoundType, boolean>>({
-    introducciones: false,
-    refutacion1: false,
-    refutacion2: false,
-    conclusiones: false
-  });
+  const [expandedRounds, setExpandedRounds] = useState<Record<string, boolean>>({});
   const [teamNotes, setTeamNotes] = useState({
     bestSpeakerA: '',
     bestSpeakerB: '',
@@ -76,9 +88,13 @@ export const ScoringScreen: React.FC<ScoringScreenProps> = ({ onFinish, onBack }
     initializeEmptyScoring();
   }, []);
 
+  const currentRubric = getRubric(config.formatType);
+  const maxScore = getMaxScore(config.formatType);
+
   const initializeEmptyScoring = () => {
+    const rubric = getRubric(config.formatType);
     const emptyRoundScores = (teamId: TeamPosition, teamName: string): SpeakerRoundScore[] => {
-      return DEBATE_RUBRIC.map(section => ({
+      return rubric.map(section => ({
         speakerId: `${teamId}-${section.roundType}`,
         speakerName: teamName,
         roundType: section.roundType,
@@ -125,7 +141,7 @@ export const ScoringScreen: React.FC<ScoringScreenProps> = ({ onFinish, onBack }
     setScoringResult(initialResult);
     
     const initialEditable: EditableScores = {};
-    DEBATE_RUBRIC.forEach(section => {
+    rubric.forEach(section => {
       section.criteria.forEach(criterion => {
         initialEditable[`A-${criterion.id}`] = { score: 0 };
         initialEditable[`B-${criterion.id}`] = { score: 0 };
@@ -136,7 +152,8 @@ export const ScoringScreen: React.FC<ScoringScreenProps> = ({ onFinish, onBack }
 
   const handleScoreChange = (teamId: TeamPosition, criterionId: string, value: number) => {
     const key = `${teamId}-${criterionId}`;
-    const newScore = Math.min(4, Math.max(0, value));
+    const maxScore = getMaxScore(config.formatType);
+    const newScore = Math.min(maxScore, Math.max(0, value));
     
     setEditableScores(prev => ({ ...prev, [key]: { score: newScore } }));
     
@@ -177,7 +194,7 @@ export const ScoringScreen: React.FC<ScoringScreenProps> = ({ onFinish, onBack }
     return 'draw';
   };
 
-  const toggleRound = (roundType: RubricRoundType) => {
+  const toggleRound = (roundType: string) => {
     setExpandedRounds(prev => ({ ...prev, [roundType]: !prev[roundType] }));
   };
 
@@ -298,7 +315,7 @@ export const ScoringScreen: React.FC<ScoringScreenProps> = ({ onFinish, onBack }
           </div>
 
           <div className="space-y-4">
-            {DEBATE_RUBRIC.map((section) => (
+            {currentRubric.map((section) => (
               <div key={section.roundType} className="bg-slate-800/50 border border-slate-700 rounded-2xl overflow-hidden">
                 <button
                   onClick={() => toggleRound(section.roundType)}
@@ -346,16 +363,16 @@ export const ScoringScreen: React.FC<ScoringScreenProps> = ({ onFinish, onBack }
                                     <input
                                       type="number"
                                       min="0"
-                                      max="4"
+                                      max={maxScore}
                                       value={scoreA}
                                       onChange={(e) => handleScoreChange('A', criterion.id, parseInt(e.target.value) || 0)}
                                       className="w-16 px-2 py-1 bg-slate-800 border border-slate-600 rounded text-white text-center"
                                     />
                                     <span className="text-slate-500 text-sm">/ {criterion.maxScore}</span>
                                   </div>
-                                ) : (
-                                  <div className={`inline-flex items-center gap-2 px-3 py-1 rounded-full border ${getScoreBgColor(scoreA)}`}>
-                                    <span className={`font-bold ${getScoreColor(scoreA)}`}>{scoreA}</span>
+                                 ) : (
+                                  <div className={`inline-flex items-center gap-2 px-3 py-1 rounded-full border ${getScoreBgColor(scoreA, maxScore)}`}>
+                                    <span className={`font-bold ${getScoreColor(scoreA, maxScore)}`}>{scoreA}</span>
                                     <span className="text-slate-400 text-sm">/ {criterion.maxScore}</span>
                                   </div>
                                 )}
@@ -373,7 +390,7 @@ export const ScoringScreen: React.FC<ScoringScreenProps> = ({ onFinish, onBack }
                                     <input
                                       type="number"
                                       min="0"
-                                      max="4"
+                                      max={maxScore}
                                       value={scoreB}
                                       onChange={(e) => handleScoreChange('B', criterion.id, parseInt(e.target.value) || 0)}
                                       className="w-16 px-2 py-1 bg-slate-800 border border-slate-600 rounded text-white text-center"
@@ -381,8 +398,8 @@ export const ScoringScreen: React.FC<ScoringScreenProps> = ({ onFinish, onBack }
                                     <span className="text-slate-500 text-sm">/ {criterion.maxScore}</span>
                                   </div>
                                 ) : (
-                                  <div className={`inline-flex items-center gap-2 px-3 py-1 rounded-full border ${getScoreBgColor(scoreB)}`}>
-                                    <span className={`font-bold ${getScoreColor(scoreB)}`}>{scoreB}</span>
+                                  <div className={`inline-flex items-center gap-2 px-3 py-1 rounded-full border ${getScoreBgColor(scoreB, maxScore)}`}>
+                                    <span className={`font-bold ${getScoreColor(scoreB, maxScore)}`}>{scoreB}</span>
                                     <span className="text-slate-400 text-sm">/ {criterion.maxScore}</span>
                                   </div>
                                 )}
@@ -440,9 +457,9 @@ export const ScoringScreen: React.FC<ScoringScreenProps> = ({ onFinish, onBack }
                         className="w-full px-3 py-2 bg-slate-900/50 border border-slate-600 rounded-lg text-white"
                       />
                     ) : (
-                      <div className={`inline-flex items-center gap-2 px-3 py-1 rounded-full border ${getScoreBgColor(connection)}`}>
-                        <span className={`font-bold ${getScoreColor(connection)}`}>{connection}</span>
-                        <span className="text-slate-400">/ 4</span>
+                      <div className={`inline-flex items-center gap-2 px-3 py-1 rounded-full border ${getScoreBgColor(connection, maxScore)}`}>
+                        <span className={`font-bold ${getScoreColor(connection, maxScore)}`}>{connection}</span>
+                        <span className="text-slate-400">/ {maxScore}</span>
                       </div>
                     )}
                   </div>

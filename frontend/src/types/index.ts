@@ -3,8 +3,9 @@
  */
 
 export type TeamPosition = 'A' | 'B';
-export type RoundType = 'Introducción' | 'Primer Refutador' | 'Segundo Refutador' | 'Conclusión';
+export type RoundType = 'Introducción' | 'Primer Refutador' | 'Segundo Refutador' | 'Conclusión' | 'Contextualización' | 'Definición' | 'Valoración';
 export type DebateState = 'setup' | 'paused' | 'running' | 'finished';
+export type DebateFormatType = 'UPCT' | 'RETOR';
 
 /**
  * Definición de una ronda de debate
@@ -39,11 +40,17 @@ export interface DebateConfig {
   teamAName: string;
   teamBName: string;
   debateTopic: string;
+  formatType?: DebateFormatType;
   roundDurations: {
-    introduccion: number;
-    primerRefutador: number;
-    segundoRefutador: number;
-    conclusion: number;
+    // UPCT phases
+    introduccion?: number;
+    primerRefutador?: number;
+    segundoRefutador?: number;
+    conclusion?: number;
+    // RETOR phases
+    contextualizacion?: number;
+    definicion?: number;
+    valoracion?: number;
   };
 }
 
@@ -133,9 +140,19 @@ export interface CriterionScore {
 }
 
 /**
- * Tipos de ronda para la rúbrica
+ * Tipos de ronda para la rúbrica (UPCT)
  */
-export type RubricRoundType = 'introducciones' | 'refutacion1' | 'refutacion2' | 'conclusiones';
+export type UpctRubricRoundType = 'introducciones' | 'refutacion1' | 'refutacion2' | 'conclusiones';
+
+/**
+ * Tipos de ronda para la rúbrica (RETOR)
+ */
+export type RetorRubricRoundType = 'contextualizacion' | 'definicion' | 'valoracion' | 'conclusion';
+
+/**
+ * Tipos de ronda para la rúbrica (todos los formatos)
+ */
+export type RubricRoundType = UpctRubricRoundType | RetorRubricRoundType;
 
 /**
  * Criterio de evaluación específico de una ronda
@@ -207,7 +224,138 @@ export interface DebateScoringResult {
 }
 
 /**
- * Rúbrica completa de evaluación por rondas
+ * Rúbrica completa de evaluación RETOR (5 ítems de evaluación)
+ * Según el documento oficial del formato RETOR
+ */
+export const RETOR_RUBRIC: RubricSection[] = [
+  {
+    roundType: 'contextualizacion',
+    roundName: 'Contextualización',
+    criteria: [
+      {
+        id: 'retor-context-comprension',
+        description: 'COMPRENSIÓN DE LA MOCIÓN Y DESARROLLO DEL DEBATE: Ajuste a la moción, coherencia contextual, anticipación a la refutación, desarrollo lógico, cierre sintético.',
+        maxScore: 5
+      },
+      {
+        id: 'retor-context-relevancia',
+        description: 'RELEVANCIA DE LA INFORMACIÓN PRESENTADA: Pertinencia de la información, uso crítico, fiabilidad de fuentes.',
+        maxScore: 5
+      },
+      {
+        id: 'retor-context-argumentacion',
+        description: 'ARGUMENTACIÓN Y REFUTACIÓN: Calidad argumentativa, refutación efectiva.',
+        maxScore: 5
+      },
+      {
+        id: 'retor-context-oratoria',
+        description: 'ORATORIA Y CAPACIDAD PERSUASIVA: Claridad expresiva, persuasión.',
+        maxScore: 5
+      },
+      {
+        id: 'retor-context-equipo',
+        description: 'TRABAJO EN EQUIPO Y USO DEL FORMATO RETOR: Coordinación del equipo, uso del tiempo RETOR (minuto protegido, alternancia).',
+        maxScore: 5
+      }
+    ]
+  },
+  {
+    roundType: 'definicion',
+    roundName: 'Definición',
+    criteria: [
+      {
+        id: 'retor-def-comprension',
+        description: 'COMPRENSIÓN DE LA MOCIÓN Y DESARROLLO DEL DEBATE: Ajuste a la moción, coherencia contextual, anticipación a la refutación, desarrollo lógico.',
+        maxScore: 5
+      },
+      {
+        id: 'retor-def-relevancia',
+        description: 'RELEVANCIA DE LA INFORMACIÓN PRESENTADA: Pertinencia de la información, uso crítico, fiabilidad de fuentes.',
+        maxScore: 5
+      },
+      {
+        id: 'retor-def-argumentacion',
+        description: 'ARGUMENTACIÓN Y REFUTACIÓN: Calidad argumentativa, refutación efectiva.',
+        maxScore: 5
+      },
+      {
+        id: 'retor-def-oratoria',
+        description: 'ORATORIA Y CAPACIDAD PERSUASIVA: Claridad expresiva, persuasión.',
+        maxScore: 5
+      },
+      {
+        id: 'retor-def-equipo',
+        description: 'TRABAJO EN EQUIPO Y USO DEL FORMATO RETOR: Coordinación del equipo, uso del tiempo RETOR (minuto protegido, alternancia).',
+        maxScore: 5
+      }
+    ]
+  },
+  {
+    roundType: 'valoracion',
+    roundName: 'Valoración',
+    criteria: [
+      {
+        id: 'retor-val-comprension',
+        description: 'COMPRENSIÓN DE LA MOCIÓN Y DESARROLLO DEL DEBATE: Ajuste a la moción, coherencia contextual, anticipación a la refutación, desarrollo lógico, cierre sintético.',
+        maxScore: 5
+      },
+      {
+        id: 'retor-val-relevancia',
+        description: 'RELEVANCIA DE LA INFORMACIÓN PRESENTADA: Pertinencia de la información, uso crítico, fiabilidad de fuentes.',
+        maxScore: 5
+      },
+      {
+        id: 'retor-val-argumentacion',
+        description: 'ARGUMENTACIÓN Y REFUTACIÓN: Calidad argumentativa, refutación efectiva (comparación de argumentos).',
+        maxScore: 5
+      },
+      {
+        id: 'retor-val-oratoria',
+        description: 'ORATORIA Y CAPACIDAD PERSUASIVA: Claridad expresiva, persuasión.',
+        maxScore: 5
+      },
+      {
+        id: 'retor-val-equipo',
+        description: 'TRABAJO EN EQUIPO Y USO DEL FORMATO RETOR: Coordinación del equipo, uso del tiempo RETOR (minuto de oro).',
+        maxScore: 5
+      }
+    ]
+  },
+  {
+    roundType: 'conclusion',
+    roundName: 'Conclusión',
+    criteria: [
+      {
+        id: 'retor-conc-comprension',
+        description: 'COMPRENSIÓN DE LA MOCIÓN Y DESARROLLO DEL DEBATE: Cierre sintético, repaso de puntos de choque, demostración de victoria argumental.',
+        maxScore: 5
+      },
+      {
+        id: 'retor-conc-relevancia',
+        description: 'RELEVANCIA DE LA INFORMACIÓN PRESENTADA: Síntesis de información sin datos nuevos, comparación efectiva.',
+        maxScore: 5
+      },
+      {
+        id: 'retor-conc-argumentacion',
+        description: 'ARGUMENTACIÓN Y REFUTACIÓN: Resumen de argumentos propios y contrarios, fortaleza de postura.',
+        maxScore: 5
+      },
+      {
+        id: 'retor-conc-oratoria',
+        description: 'ORATORIA Y CAPACIDAD PERSUASIVA: Claridad expresiva, persuasión final.',
+        maxScore: 5
+      },
+      {
+        id: 'retor-conc-equipo',
+        description: 'TRABAJO EN EQUIPO Y USO DEL FORMATO RETOR: Un solo orador, no se divide la intervención, no minuto de oro.',
+        maxScore: 5
+      }
+    ]
+  }
+];
+
+/**
+ * Rúbrica completa de evaluación por rondas (UPCT)
  */
 export const DEBATE_RUBRIC: RubricSection[] = [
   {
