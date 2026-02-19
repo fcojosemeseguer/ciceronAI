@@ -331,6 +331,8 @@ function App() {
             onNewDebate={handleNewDebate}
             onAnalyzeRecorded={handleAnalyzeRecorded}
             onViewHistory={handleViewHistory}
+            onGoHome={handleGoToLanding}
+            onLogout={handleGoToLanding}
           />
         );
 

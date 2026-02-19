@@ -12,12 +12,16 @@ interface DashboardScreenProps {
   onNewDebate: () => void;
   onAnalyzeRecorded: () => void;
   onViewHistory: () => void;
+  onGoHome?: () => void;
+  onLogout?: () => void;
 }
 
 export const DashboardScreen: React.FC<DashboardScreenProps> = ({
   onNewDebate,
   onAnalyzeRecorded,
   onViewHistory,
+  onGoHome,
+  onLogout,
 }) => {
   const { user } = useAuthStore();
 
@@ -50,7 +54,11 @@ export const DashboardScreen: React.FC<DashboardScreenProps> = ({
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-slate-900 via-slate-800 to-slate-900 overflow-y-auto">
-      <GlassNavbar title="CiceronAI" />
+      <GlassNavbar 
+        title="CiceronAI" 
+        onHomeClick={onGoHome}
+        onLogout={onLogout}
+      />
       
       <div className="pt-32 pb-32 px-4 sm:px-6 lg:px-8">
         <div className="max-w-6xl mx-auto">

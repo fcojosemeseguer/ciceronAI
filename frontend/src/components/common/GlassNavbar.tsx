@@ -12,12 +12,20 @@ interface GlassNavbarProps {
   title?: string;
   showUserMenu?: boolean;
   rightContent?: React.ReactNode;
+  onHomeClick?: () => void;
+  onDebatesClick?: () => void;
+  onEvaluationsClick?: () => void;
+  onLogout?: () => void;
 }
 
 export const GlassNavbar: React.FC<GlassNavbarProps> = ({
   title = 'CiceronAI',
   showUserMenu = true,
   rightContent,
+  onHomeClick,
+  onDebatesClick,
+  onEvaluationsClick,
+  onLogout,
 }) => {
   const { user, logout } = useAuthStore();
   const [isMenuOpen, setIsMenuOpen] = useState(false);
@@ -35,7 +43,6 @@ export const GlassNavbar: React.FC<GlassNavbarProps> = ({
             border border-white/10
             rounded-2xl
             shadow-[0_8px_32px_rgba(0,0,0,0.3)]
-            overflow-hidden
           "
         >
           {/* Efecto de brillo en el borde superior */}
@@ -67,24 +74,30 @@ export const GlassNavbar: React.FC<GlassNavbarProps> = ({
 
             {/* Enlaces - Centro (en desktop) */}
             <div className="hidden md:flex items-center gap-8">
-              <a 
-                href="#" 
-                className="text-white/70 hover:text-white transition-colors text-sm font-medium tracking-wide"
-              >
-                Inicio
-              </a>
-              <a 
-                href="#" 
-                className="text-white/70 hover:text-white transition-colors text-sm font-medium tracking-wide"
-              >
-                Debates
-              </a>
-              <a 
-                href="#" 
-                className="text-white/70 hover:text-white transition-colors text-sm font-medium tracking-wide"
-              >
-                Evaluaciones
-              </a>
+              {onHomeClick && (
+                <button 
+                  onClick={onHomeClick}
+                  className="text-white/70 hover:text-white transition-colors text-sm font-medium tracking-wide"
+                >
+                  Inicio
+                </button>
+              )}
+              {onDebatesClick && (
+                <button 
+                  onClick={onDebatesClick}
+                  className="text-white/70 hover:text-white transition-colors text-sm font-medium tracking-wide"
+                >
+                  Debates
+                </button>
+              )}
+              {onEvaluationsClick && (
+                <button 
+                  onClick={onEvaluationsClick}
+                  className="text-white/70 hover:text-white transition-colors text-sm font-medium tracking-wide"
+                >
+                  Evaluaciones
+                </button>
+              )}
             </div>
 
             {/* Derecha - User menu o contenido personalizado */}
@@ -118,18 +131,18 @@ export const GlassNavbar: React.FC<GlassNavbarProps> = ({
                   {showUserDropdown && (
                     <>
                       <div 
-                        className="fixed inset-0 z-40"
+                        className="fixed inset-0 z-[90]"
                         onClick={() => setShowUserDropdown(false)}
                       />
                       <div className="
                         absolute right-0 top-full mt-2 w-56
                         backdrop-blur-2xl
-                        bg-black/40
-                        border border-white/10
+                        bg-black/80
+                        border border-white/20
                         rounded-xl
-                        shadow-[0_8px_32px_rgba(0,0,0,0.4)]
+                        shadow-[0_8px_32px_rgba(0,0,0,0.6)]
                         overflow-hidden
-                        z-50
+                        z-[100]
                       ">
                         <div className="p-4 border-b border-white/10">
                           <p className="text-white font-medium truncate">{user.name}</p>
@@ -140,6 +153,7 @@ export const GlassNavbar: React.FC<GlassNavbarProps> = ({
                           onClick={() => {
                             logout();
                             setShowUserDropdown(false);
+                            onLogout?.();
                           }}
                           className="
                             w-full px-4 py-3
@@ -172,9 +186,15 @@ export const GlassNavbar: React.FC<GlassNavbarProps> = ({
           {isMenuOpen && (
             <div className="md:hidden border-t border-white/10 backdrop-blur-xl bg-black/20">
               <div className="px-6 py-4 space-y-3">
-                <a href="#" className="block text-white/70 hover:text-white transition-colors py-2">Inicio</a>
-                <a href="#" className="block text-white/70 hover:text-white transition-colors py-2">Debates</a>
-                <a href="#" className="block text-white/70 hover:text-white transition-colors py-2">Evaluaciones</a>
+                {onHomeClick && (
+                  <button onClick={() => { onHomeClick(); setIsMenuOpen(false); }} className="block w-full text-left text-white/70 hover:text-white transition-colors py-2">Inicio</button>
+                )}
+                {onDebatesClick && (
+                  <button onClick={() => { onDebatesClick(); setIsMenuOpen(false); }} className="block w-full text-left text-white/70 hover:text-white transition-colors py-2">Debates</button>
+                )}
+                {onEvaluationsClick && (
+                  <button onClick={() => { onEvaluationsClick(); setIsMenuOpen(false); }} className="block w-full text-left text-white/70 hover:text-white transition-colors py-2">Evaluaciones</button>
+                )}
               </div>
             </div>
           )}
