@@ -52,7 +52,7 @@ export const CompetitionScreen: React.FC<CompetitionScreenProps> = ({ onFinish }
     pendingCount,
     completedCount,
     errorCount,
-  } = useRealtimeAnalysis('upct', handleAnalysisComplete);
+  } = useRealtimeAnalysis(config.debateType, handleAnalysisComplete);
 
   // Hook de grabación con callback para análisis
   const handleRecordingComplete = useCallback((recording: AudioRecording) => {

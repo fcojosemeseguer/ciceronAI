@@ -14,11 +14,12 @@ export const setupDebug = () => {
     getState: () => store.getState(),
     
     // Acciones de control
-    initDebate: (teamA = 'Rojos', teamB = 'Azules', topic = 'Tema Test') => {
+    initDebate: (teamA = 'Rojos', teamB = 'Azules', topic = 'Tema Test', debateType: 'upct' | 'retor' = 'upct') => {
       store.getState().initializeDebate({
         teamAName: teamA,
         teamBName: teamB,
         debateTopic: topic,
+        debateType: debateType,
         roundDurations: {
           introduccion: 10,  // 10s para testing
           primerRefutador: 15,

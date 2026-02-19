@@ -23,6 +23,7 @@ const defaultConfig: DebateConfig = {
   teamAName: 'Equipo A',
   teamBName: 'Equipo B',
   debateTopic: 'Tema del Debate',
+  debateType: 'upct',
   roundDurations: {
     introduccion: 180,
     primerRefutador: 240,

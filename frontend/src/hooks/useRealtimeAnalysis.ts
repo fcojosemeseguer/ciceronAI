@@ -47,7 +47,7 @@ const mapTeamToPostura = (team: TeamPosition): string => {
 };
 
 export const useRealtimeAnalysis = (
-  debateType: string = 'upct',
+  debateType: 'upct' | 'retor' = 'upct',
   onResultReceived?: (result: AnalysisResult, recording: AudioRecording) => void
 ): UseRealtimeAnalysisReturn => {
   const queueRef = useRef<QueuedAnalysis[]>([]);

@@ -1,6 +1,6 @@
 /**
  * ScoringScreen - Pantalla de puntuación y evaluación del debate
- * Muestra la rúbrica completa por rondas y permite evaluar ambos equipos
+ * Soporta rúbricas UPCT (académico) y RETOR
  */
 
 import React, { useState, useEffect } from 'react';
@@ -15,19 +15,19 @@ import {
   Edit3,
   Save,
   Mic,
-  Brain,
-  BarChart3,
-  Users
+  Brain
 } from 'lucide-react';
 import { useDebateStore } from '../../store/debateStore';
 import { useDebateHistoryStore } from '../../store/debateHistoryStore';
 import { 
-  DEBATE_RUBRIC, 
+  DEBATE_RUBRIC,
+  RETOR_RUBRIC,
   DetailedTeamScore, 
   DebateScoringResult,
   TeamPosition,
   SpeakerRoundScore,
-  RubricRoundType
+  RubricRoundType,
+  RetorRubricSection
 } from '../../types';
 import { generateDebatePDF } from '../../utils/pdfGenerator';
 
@@ -40,18 +40,39 @@ interface EditableScores {
   [key: string]: { score: number };
 }
 
-const getScoreColor = (score: number) => {
-  if (score >= 4) return 'text-green-400';
-  if (score >= 3) return 'text-[#00E5FF]';
-  if (score >= 2) return 'text-yellow-400';
-  return 'text-[#FF6B00]';
+// Helpers para colores según el tipo de rúbrica
+const getScoreColor = (score: number, isRetor: boolean = false) => {
+  if (isRetor) {
+    // Escala 1-5 para RETOR
+    if (score >= 5) return 'text-green-400';
+    if (score >= 4) return 'text-[#00E5FF]';
+    if (score >= 3) return 'text-yellow-400';
+    if (score >= 2) return 'text-orange-400';
+    return 'text-red-400';
+  } else {
+    // Escala 0-4 para UPCT
+    if (score >= 4) return 'text-green-400';
+    if (score >= 3) return 'text-[#00E5FF]';
+    if (score >= 2) return 'text-yellow-400';
+    return 'text-[#FF6B00]';
+  }
 };
 
-const getScoreBgColor = (score: number) => {
-  if (score >= 4) return 'bg-green-500/20 border-green-500/30';
-  if (score >= 3) return 'bg-[#00E5FF]/20 border-[#00E5FF]/30';
-  if (score >= 2) return 'bg-yellow-500/20 border-yellow-500/30';
-  return 'bg-[#FF6B00]/20 border-[#FF6B00]/30';
+const getScoreBgColor = (score: number, isRetor: boolean = false) => {
+  if (isRetor) {
+    // Escala 1-5 para RETOR
+    if (score >= 5) return 'bg-green-500/20 border-green-500/30';
+    if (score >= 4) return 'bg-[#00E5FF]/20 border-[#00E5FF]/30';
+    if (score >= 3) return 'bg-yellow-500/20 border-yellow-500/30';
+    if (score >= 2) return 'bg-orange-500/20 border-orange-500/30';
+    return 'bg-red-500/20 border-red-500/30';
+  } else {
+    // Escala 0-4 para UPCT
+    if (score >= 4) return 'bg-green-500/20 border-green-500/30';
+    if (score >= 3) return 'bg-[#00E5FF]/20 border-[#00E5FF]/30';
+    if (score >= 2) return 'bg-yellow-500/20 border-yellow-500/30';
+    return 'bg-[#FF6B00]/20 border-[#FF6B00]/30';
+  }
 };
 
 export const ScoringScreen: React.FC<ScoringScreenProps> = ({ onFinish, onBack }) => {
@@ -59,43 +80,60 @@ export const ScoringScreen: React.FC<ScoringScreenProps> = ({ onFinish, onBack }
   const { addDebate } = useDebateHistoryStore();
   const analysisResults = getAnalysisResults();
   
+  // Detectar tipo de debate
+  const isRetor = config.debateType === 'retor';
+  const MAX_SCORE = isRetor ? 50 : 40;
+  const MIN_SCORE = isRetor ? 1 : 0;
+  
   const [scoringResult, setScoringResult] = useState<DebateScoringResult | null>(null);
   const [isGeneratingPDF, setIsGeneratingPDF] = useState(false);
   const [isEditing, setIsEditing] = useState(false);
   const [editableScores, setEditableScores] = useState<EditableScores>({});
-  const [expandedRounds, setExpandedRounds] = useState<Record<RubricRoundType, boolean>>({
-    introducciones: false,
-    refutacion1: false,
-    refutacion2: false,
-    conclusiones: false
-  });
+  const [expandedSections, setExpandedSections] = useState<Record<string, boolean>>({});
   const [teamNotes, setTeamNotes] = useState({
     bestSpeakerA: '',
     bestSpeakerB: '',
-    teamConnectionA: 0,
-    teamConnectionB: 0
+    teamConnectionA: isRetor ? 1 : 0,
+    teamConnectionB: isRetor ? 1 : 0
   });
-  const [showAnalysisResults, setShowAnalysisResults] = useState(true);
+  const [showAnalysisResults, setShowAnalysisResults] = useState(false);
 
   useEffect(() => {
     initializeEmptyScoring();
   }, []);
 
+  useEffect(() => {
+    // Si hay resultados de análisis, mostrar análisis por defecto
+    // Si no hay, mostrar evaluación manual
+    if (analysisResults.length > 0) {
+      setShowAnalysisResults(true);
+    } else {
+      setShowAnalysisResults(false);
+    }
+  }, [analysisResults.length]);
+
   const initializeEmptyScoring = () => {
-    const emptyRoundScores = (teamId: TeamPosition, teamName: string): SpeakerRoundScore[] => {
-      return DEBATE_RUBRIC.map(section => ({
-        speakerId: `${teamId}-${section.roundType}`,
-        speakerName: teamName,
-        roundType: section.roundType,
-        criterionScores: section.criteria.map(c => ({
-          criterionId: c.id,
-          score: 0,
-          notes: ''
-        })),
-        totalScore: 0,
-        notes: ''
-      }));
-    };
+    let initialScores: EditableScores = {};
+    
+    if (isRetor) {
+      // Inicializar con RETOR_RUBRIC (10 criterios)
+      RETOR_RUBRIC.forEach(section => {
+        section.criteria.forEach(criterion => {
+          initialScores[`A-${criterion.id}`] = { score: 1 }; // Mínimo 1 para RETOR
+          initialScores[`B-${criterion.id}`] = { score: 1 };
+        });
+      });
+    } else {
+      // Inicializar con DEBATE_RUBRIC (UPCT)
+      DEBATE_RUBRIC.forEach(section => {
+        section.criteria.forEach(criterion => {
+          initialScores[`A-${criterion.id}`] = { score: 0 };
+          initialScores[`B-${criterion.id}`] = { score: 0 };
+        });
+      });
+    }
+    
+    setEditableScores(initialScores);
 
     const initialResult: DebateScoringResult = {
       debateId: `debate-${Date.now()}`,
@@ -107,8 +145,8 @@ export const ScoringScreen: React.FC<ScoringScreenProps> = ({ onFinish, onBack }
       teamAScore: {
         teamId: 'A',
         teamName: config.teamAName,
-        roundScores: emptyRoundScores('A', config.teamAName),
-        teamConnectionScore: 0,
+        roundScores: [],
+        teamConnectionScore: isRetor ? 1 : 0,
         totalScore: 0,
         bestSpeaker: '',
         overallNotes: ''
@@ -116,8 +154,8 @@ export const ScoringScreen: React.FC<ScoringScreenProps> = ({ onFinish, onBack }
       teamBScore: {
         teamId: 'B',
         teamName: config.teamBName,
-        roundScores: emptyRoundScores('B', config.teamBName),
-        teamConnectionScore: 0,
+        roundScores: [],
+        teamConnectionScore: isRetor ? 1 : 0,
         totalScore: 0,
         bestSpeaker: '',
         overallNotes: ''
@@ -128,98 +166,98 @@ export const ScoringScreen: React.FC<ScoringScreenProps> = ({ onFinish, onBack }
     };
 
     setScoringResult(initialResult);
+  };
+
+  const calculateTeamTotal = (teamId: TeamPosition): number => {
+    let total = 0;
+    const prefix = `${teamId}-`;
     
-    const initialEditable: EditableScores = {};
-    DEBATE_RUBRIC.forEach(section => {
-      section.criteria.forEach(criterion => {
-        initialEditable[`A-${criterion.id}`] = { score: 0 };
-        initialEditable[`B-${criterion.id}`] = { score: 0 };
-      });
+    Object.entries(editableScores).forEach(([key, value]) => {
+      if (key.startsWith(prefix)) {
+        total += value.score;
+      }
     });
-    setEditableScores(initialEditable);
+    
+    // Añadir puntuación de conexión de equipo
+    const connectionScore = teamId === 'A' ? teamNotes.teamConnectionA : teamNotes.teamConnectionB;
+    total += connectionScore;
+    
+    return total;
   };
 
   const handleScoreChange = (teamId: TeamPosition, criterionId: string, value: number) => {
     const key = `${teamId}-${criterionId}`;
-    const newScore = Math.min(4, Math.max(0, value));
+    const newScore = Math.min(5, Math.max(isRetor ? 1 : 0, value));
     
     setEditableScores(prev => ({ ...prev, [key]: { score: newScore } }));
+  };
+
+  const determineWinner = (): TeamPosition | 'draw' => {
+    const teamATotal = calculateTeamTotal('A');
+    const teamBTotal = calculateTeamTotal('B');
     
-    if (scoringResult) {
-      const teamKey = teamId === 'A' ? 'teamAScore' : 'teamBScore';
-      const updatedTeam = { ...scoringResult[teamKey] };
-      
-      updatedTeam.roundScores = updatedTeam.roundScores.map(round => ({
-        ...round,
-        criterionScores: round.criterionScores.map(c => 
-          c.criterionId === criterionId ? { ...c, score: newScore } : c
-        )
-      }));
-      
-      updatedTeam.totalScore = calculateTeamTotal(updatedTeam.roundScores, updatedTeam.teamConnectionScore);
-      
-      setScoringResult({
-        ...scoringResult,
-        [teamKey]: updatedTeam,
-        winner: determineWinner(
-          teamId === 'A' ? updatedTeam : scoringResult.teamAScore,
-          teamId === 'B' ? updatedTeam : scoringResult.teamBScore
-        )
-      });
-    }
-  };
-
-  const calculateTeamTotal = (roundScores: SpeakerRoundScore[], connectionScore: number): number => {
-    const roundsTotal = roundScores.reduce((sum, round) => 
-      sum + round.criterionScores.reduce((cSum, c) => cSum + c.score, 0), 0
-    );
-    return roundsTotal + connectionScore;
-  };
-
-  const determineWinner = (teamA: DetailedTeamScore, teamB: DetailedTeamScore): TeamPosition | 'draw' => {
-    if (teamA.totalScore > teamB.totalScore) return 'A';
-    if (teamB.totalScore > teamA.totalScore) return 'B';
+    if (teamATotal > teamBTotal) return 'A';
+    if (teamBTotal > teamATotal) return 'B';
     return 'draw';
   };
 
-  const toggleRound = (roundType: RubricRoundType) => {
-    setExpandedRounds(prev => ({ ...prev, [roundType]: !prev[roundType] }));
+  const toggleSection = (sectionId: string) => {
+    setExpandedSections(prev => ({ ...prev, [sectionId]: !prev[sectionId] }));
   };
 
-  const handleSaveEvaluation = () => {
-    if (!scoringResult) return;
+  const handleSaveEvaluation = async () => {
+    if (!scoringResult) {
+      console.error('No hay scoringResult');
+      return;
+    }
     
-    addDebate({
-      id: scoringResult.debateId,
-      date: scoringResult.date,
-      topic: scoringResult.topic,
-      teamAName: scoringResult.teamAName,
-      teamBName: scoringResult.teamBName,
-      winner: scoringResult.winner,
-      scores: [
-        {
-          teamId: 'A',
-          teamName: scoringResult.teamAName,
-          argumentation: scoringResult.teamAScore.totalScore,
-          refutation: scoringResult.teamAScore.totalScore,
-          presentation: scoringResult.teamAScore.totalScore,
-          total: scoringResult.teamAScore.totalScore
-        },
-        {
-          teamId: 'B',
-          teamName: scoringResult.teamBName,
-          argumentation: scoringResult.teamBScore.totalScore,
-          refutation: scoringResult.teamBScore.totalScore,
-          presentation: scoringResult.teamBScore.totalScore,
-          total: scoringResult.teamBScore.totalScore
-        }
-      ],
-      duration: scoringResult.duration,
-      summary: `Ganador: ${scoringResult.winner === 'draw' ? 'Empate' : scoringResult.winner === 'A' ? scoringResult.teamAName : scoringResult.teamBName}`,
-      recordingsCount: recordings.length
-    });
-    
-    onFinish();
+    try {
+      const winner = determineWinner();
+      const teamATotal = calculateTeamTotal('A');
+      const teamBTotal = calculateTeamTotal('B');
+      
+      const debateData = {
+        id: scoringResult.debateId,
+        date: scoringResult.date,
+        topic: scoringResult.topic,
+        teamAName: scoringResult.teamAName,
+        teamBName: scoringResult.teamBName,
+        winner: winner,
+        scores: [
+          {
+            teamId: 'A' as const,
+            teamName: scoringResult.teamAName,
+            argumentation: teamATotal,
+            refutation: teamATotal,
+            presentation: teamATotal,
+            total: teamATotal
+          },
+          {
+            teamId: 'B' as const,
+            teamName: scoringResult.teamBName,
+            argumentation: teamBTotal,
+            refutation: teamBTotal,
+            presentation: teamBTotal,
+            total: teamBTotal
+          }
+        ],
+        duration: scoringResult.duration,
+        summary: `Ganador: ${winner === 'draw' ? 'Empate' : winner === 'A' ? scoringResult.teamAName : scoringResult.teamBName}`,
+        recordingsCount: recordings.length
+      };
+      
+      console.log('Guardando debate:', debateData);
+      addDebate(debateData);
+      console.log('Debate guardado exitosamente');
+      
+      // Pequeña espera para asegurar que se guarde en localStorage
+      await new Promise(resolve => setTimeout(resolve, 100));
+      
+      onFinish();
+    } catch (error) {
+      console.error('Error al guardar debate:', error);
+      alert('Error al guardar el debate. Por favor, inténtalo de nuevo.');
+    }
   };
 
   const handleDownloadPDF = async () => {
@@ -232,6 +270,209 @@ export const ScoringScreen: React.FC<ScoringScreenProps> = ({ onFinish, onBack }
     }
   };
 
+  // Renderizar rúbrica RETOR
+  const renderRetorRubric = () => (
+    <div className="space-y-4">
+      {RETOR_RUBRIC.map((section) => (
+        <div key={section.id} className="bg-slate-800/50 border border-slate-700 rounded-2xl overflow-hidden">
+          <button
+            onClick={() => toggleSection(section.id)}
+            className="w-full p-4 flex items-center justify-between hover:bg-slate-700/30 transition-colors"
+          >
+            <div className="flex items-center gap-3">
+              <Trophy className="w-5 h-5 text-purple-400" />
+              <span className="text-white font-semibold text-left">{section.name}</span>
+            </div>
+            {expandedSections[section.id] ? <ChevronUp className="w-5 h-5 text-slate-400" /> : <ChevronDown className="w-5 h-5 text-slate-400" />}
+          </button>
+
+          {expandedSections[section.id] && (
+            <div className="border-t border-slate-700">
+              <div className="p-4">
+                <div className="grid grid-cols-3 gap-4 mb-4">
+                  <div className="text-center">
+                    <span className="text-[#FF6B00] font-semibold">{config.teamAName}</span>
+                  </div>
+                  <div className="text-center">
+                    <span className="text-slate-400 text-sm">Criterio RETOR</span>
+                  </div>
+                  <div className="text-center">
+                    <span className="text-[#00E5FF] font-semibold">{config.teamBName}</span>
+                  </div>
+                </div>
+                
+                <div className="space-y-3">
+                  {section.criteria.map((criterion) => {
+                    const keyA = `A-${criterion.id}`;
+                    const keyB = `B-${criterion.id}`;
+                    const scoreA = editableScores[keyA]?.score || 1;
+                    const scoreB = editableScores[keyB]?.score || 1;
+                    
+                    return (
+                      <div key={criterion.id} className="grid grid-cols-3 gap-4 items-start bg-slate-900/50 rounded-lg p-3">
+                        {/* Puntuación Equipo A */}
+                        <div className="flex justify-center">
+                          {isEditing ? (
+                            <div className="flex items-center gap-2">
+                              <input
+                                type="number"
+                                min="1"
+                                max="5"
+                                value={scoreA}
+                                onChange={(e) => handleScoreChange('A', criterion.id, parseInt(e.target.value) || 1)}
+                                className="w-16 px-2 py-1 bg-slate-800 border border-slate-600 rounded text-white text-center"
+                              />
+                              <span className="text-slate-500 text-sm">/ 5</span>
+                            </div>
+                          ) : (
+                            <div className={`inline-flex items-center gap-2 px-3 py-1 rounded-full border ${getScoreBgColor(scoreA, true)}`}>
+                              <span className={`font-bold ${getScoreColor(scoreA, true)}`}>{scoreA}</span>
+                              <span className="text-slate-400 text-sm">/ 5</span>
+                            </div>
+                          )}
+                        </div>
+                        
+                        {/* Descripción del criterio */}
+                        <div className="text-center">
+                          <p className="text-slate-300 text-sm">{criterion.description}</p>
+                          <p className="text-slate-500 text-xs mt-1">{criterion.category}</p>
+                        </div>
+                        
+                        {/* Puntuación Equipo B */}
+                        <div className="flex justify-center">
+                          {isEditing ? (
+                            <div className="flex items-center gap-2">
+                              <input
+                                type="number"
+                                min="1"
+                                max="5"
+                                value={scoreB}
+                                onChange={(e) => handleScoreChange('B', criterion.id, parseInt(e.target.value) || 1)}
+                                className="w-16 px-2 py-1 bg-slate-800 border border-slate-600 rounded text-white text-center"
+                              />
+                              <span className="text-slate-500 text-sm">/ 5</span>
+                            </div>
+                          ) : (
+                            <div className={`inline-flex items-center gap-2 px-3 py-1 rounded-full border ${getScoreBgColor(scoreB, true)}`}>
+                              <span className={`font-bold ${getScoreColor(scoreB, true)}`}>{scoreB}</span>
+                              <span className="text-slate-400 text-sm">/ 5</span>
+                            </div>
+                          )}
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
+            </div>
+          )}
+        </div>
+      ))}
+    </div>
+  );
+
+  // Renderizar rúbrica UPCT (original)
+  const renderUpctRubric = () => (
+    <div className="space-y-4">
+      {DEBATE_RUBRIC.map((section) => (
+        <div key={section.roundType} className="bg-slate-800/50 border border-slate-700 rounded-2xl overflow-hidden">
+          <button
+            onClick={() => toggleSection(section.roundType)}
+            className="w-full p-4 flex items-center justify-between hover:bg-slate-700/30 transition-colors"
+          >
+            <div className="flex items-center gap-3">
+              <Mic className="w-5 h-5 text-slate-400" />
+              <span className="text-white font-semibold">{section.roundName}</span>
+            </div>
+            {expandedSections[section.roundType] ? <ChevronUp className="w-5 h-5 text-slate-400" /> : <ChevronDown className="w-5 h-5 text-slate-400" />}
+          </button>
+
+          {expandedSections[section.roundType] && (
+            <div className="border-t border-slate-700">
+              <div className="p-4">
+                <div className="grid grid-cols-3 gap-4 mb-4">
+                  <div className="text-center">
+                    <span className="text-[#FF6B00] font-semibold">{config.teamAName}</span>
+                    <span className="text-slate-500 ml-2">(A Favor)</span>
+                  </div>
+                  <div className="text-center">
+                    <span className="text-slate-400 text-sm">Rúbrica</span>
+                  </div>
+                  <div className="text-center">
+                    <span className="text-[#00E5FF] font-semibold">{config.teamBName}</span>
+                    <span className="text-slate-500 ml-2">(En Contra)</span>
+                  </div>
+                </div>
+                
+                <div className="space-y-3">
+                  {section.criteria.map((criterion) => {
+                    const keyA = `A-${criterion.id}`;
+                    const keyB = `B-${criterion.id}`;
+                    const scoreA = editableScores[keyA]?.score || 0;
+                    const scoreB = editableScores[keyB]?.score || 0;
+                    
+                    return (
+                      <div key={criterion.id} className="grid grid-cols-3 gap-4 items-center bg-slate-900/50 rounded-lg p-3">
+                        {/* Puntuación Equipo A */}
+                        <div className="flex justify-center">
+                          {isEditing ? (
+                            <div className="flex items-center gap-2">
+                              <input
+                                type="number"
+                                min="0"
+                                max="4"
+                                value={scoreA}
+                                onChange={(e) => handleScoreChange('A', criterion.id, parseInt(e.target.value) || 0)}
+                                className="w-16 px-2 py-1 bg-slate-800 border border-slate-600 rounded text-white text-center"
+                              />
+                              <span className="text-slate-500 text-sm">/ {criterion.maxScore}</span>
+                            </div>
+                          ) : (
+                            <div className={`inline-flex items-center gap-2 px-3 py-1 rounded-full border ${getScoreBgColor(scoreA)}`}>
+                              <span className={`font-bold ${getScoreColor(scoreA)}`}>{scoreA}</span>
+                              <span className="text-slate-400 text-sm">/ {criterion.maxScore}</span>
+                            </div>
+                          )}
+                        </div>
+                        
+                        {/* Descripción */}
+                        <div className="text-center">
+                          <p className="text-slate-300 text-sm">{criterion.description}</p>
+                        </div>
+                        
+                        {/* Puntuación Equipo B */}
+                        <div className="flex justify-center">
+                          {isEditing ? (
+                            <div className="flex items-center gap-2">
+                              <input
+                                type="number"
+                                min="0"
+                                max="4"
+                                value={scoreB}
+                                onChange={(e) => handleScoreChange('B', criterion.id, parseInt(e.target.value) || 0)}
+                                className="w-16 px-2 py-1 bg-slate-800 border border-slate-600 rounded text-white text-center"
+                              />
+                              <span className="text-slate-500 text-sm">/ {criterion.maxScore}</span>
+                            </div>
+                          ) : (
+                            <div className={`inline-flex items-center gap-2 px-3 py-1 rounded-full border ${getScoreBgColor(scoreB)}`}>
+                              <span className={`font-bold ${getScoreColor(scoreB)}`}>{scoreB}</span>
+                              <span className="text-slate-400 text-sm">/ {criterion.maxScore}</span>
+                            </div>
+                          )}
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
+            </div>
+          )}
+        </div>
+      ))}
+    </div>
+  );
+
   if (!scoringResult) {
     return (
       <div className="min-h-screen bg-gradient-to-br from-slate-900 via-slate-800 to-slate-900 flex items-center justify-center pb-32">
@@ -239,6 +480,10 @@ export const ScoringScreen: React.FC<ScoringScreenProps> = ({ onFinish, onBack }
       </div>
     );
   }
+
+  const teamATotal = calculateTeamTotal('A');
+  const teamBTotal = calculateTeamTotal('B');
+  const winner = determineWinner();
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-slate-900 via-slate-800 to-slate-900 flex flex-col overflow-y-auto pb-32">
@@ -279,303 +524,81 @@ export const ScoringScreen: React.FC<ScoringScreenProps> = ({ onFinish, onBack }
       <div className="flex-1 overflow-y-auto overflow-x-hidden pb-32">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-6">
           <div className="text-center mb-8">
-            <h1 className="text-2xl sm:text-3xl font-bold text-white mb-4">{scoringResult.topic}</h1>
+            <h1 className="text-2xl sm:text-3xl font-bold text-white mb-2">{scoringResult.topic}</h1>
+            <p className="text-slate-400 mb-4">
+              Formato: <span className={isRetor ? "text-purple-400 font-semibold" : "text-blue-400 font-semibold"}>
+                {isRetor ? 'RETOR' : 'UPCT (Académico)'}
+              </span>
+              <span className="text-slate-500 mx-2">•</span>
+              <span className="text-slate-400">Máximo: {MAX_SCORE} puntos</span>
+            </p>
             
-            {/* Toggle entre resultados manuales y análisis automático */}
-            {analysisResults.length > 0 && (
-              <div className="flex justify-center gap-2 mb-6">
-                <button
-                  onClick={() => setShowAnalysisResults(true)}
-                  className={`flex items-center gap-2 px-4 py-2 rounded-lg font-medium transition-all ${
-                    showAnalysisResults 
-                      ? 'bg-gradient-to-r from-purple-600/30 to-blue-600/30 text-white border border-purple-500/50' 
-                      : 'bg-slate-800/50 text-slate-400 border border-slate-700'
-                  }`}
-                >
-                  <Brain className="w-4 h-4" />
-                  <span>Análisis Automático ({analysisResults.length})</span>
-                </button>
-                <button
-                  onClick={() => setShowAnalysisResults(false)}
-                  className={`flex items-center gap-2 px-4 py-2 rounded-lg font-medium transition-all ${
-                    !showAnalysisResults 
-                      ? 'bg-gradient-to-r from-[#FF6B00]/30 to-[#00E5FF]/30 text-white border border-white/30' 
-                      : 'bg-slate-800/50 text-slate-400 border border-slate-700'
-                  }`}
-                >
-                  <Edit3 className="w-4 h-4" />
-                  <span>Evaluación Manual</span>
-                </button>
-              </div>
-            )}
+            {/* Toggle entre resultados automáticos y manuales - SIEMPRE visible */}
+            <div className="flex justify-center gap-2 mb-6">
+              <button
+                onClick={() => analysisResults.length > 0 && setShowAnalysisResults(true)}
+                disabled={analysisResults.length === 0}
+                className={`flex items-center gap-2 px-4 py-2 rounded-lg font-medium transition-all ${
+                  showAnalysisResults && analysisResults.length > 0
+                    ? 'bg-gradient-to-r from-purple-600/30 to-blue-600/30 text-white border border-purple-500/50'
+                    : analysisResults.length === 0
+                      ? 'bg-slate-800/30 text-slate-600 border border-slate-700 cursor-not-allowed'
+                      : 'bg-slate-800/50 text-slate-400 border border-slate-700 hover:bg-slate-700/50'
+                }`}
+              >
+                <Brain className="w-4 h-4" />
+                <span>Análisis Automático ({analysisResults.length})</span>
+              </button>
+              <button
+                onClick={() => setShowAnalysisResults(false)}
+                className={`flex items-center gap-2 px-4 py-2 rounded-lg font-medium transition-all ${
+                  !showAnalysisResults
+                    ? 'bg-gradient-to-r from-[#FF6B00]/30 to-[#00E5FF]/30 text-white border border-white/30'
+                    : 'bg-slate-800/50 text-slate-400 border border-slate-700 hover:bg-slate-700/50'
+                }`}
+              >
+                <Edit3 className="w-4 h-4" />
+                <span>Evaluación Manual</span>
+              </button>
+            </div>
             
-            {/* Puntuaciones del Análisis Automático */}
-            {showAnalysisResults && analysisResults.length > 0 ? (
-              <div className="bg-gradient-to-br from-purple-900/20 to-blue-900/20 border border-purple-500/30 rounded-2xl p-6 mb-6">
-                <div className="flex items-center justify-center gap-2 mb-4">
-                  <Brain className="w-6 h-6 text-purple-400" />
-                  <h2 className="text-xl font-bold text-white">Resultados del Análisis Automático</h2>
-                </div>
-                
-                <div className="grid grid-cols-2 gap-4 max-w-2xl mx-auto mb-6">
-                  <div className={`p-4 rounded-xl border-2 ${
-                    getTeamScoreFromAnalysis('A') > getTeamScoreFromAnalysis('B') 
-                      ? 'border-[#FF6B00]/50 bg-[#FF6B00]/10' 
-                      : 'border-slate-700'
-                  }`}>
-                    <p className="text-[#FF6B00] text-sm font-medium mb-1">{scoringResult.teamAName}</p>
-                    <p className="text-3xl font-bold text-white">{getTeamScoreFromAnalysis('A')}</p>
-                    <p className="text-slate-400 text-xs mt-1">Basado en {analysisResults.filter(r => r.postura === 'A Favor').length} intervenciones</p>
-                  </div>
-                  
-                  <div className={`p-4 rounded-xl border-2 ${
-                    getTeamScoreFromAnalysis('B') > getTeamScoreFromAnalysis('A') 
-                      ? 'border-[#00E5FF]/50 bg-[#00E5FF]/10' 
-                      : 'border-slate-700'
-                  }`}>
-                    <p className="text-[#00E5FF] text-sm font-medium mb-1">{scoringResult.teamBName}</p>
-                    <p className="text-3xl font-bold text-white">{getTeamScoreFromAnalysis('B')}</p>
-                    <p className="text-slate-400 text-xs mt-1">Basado en {analysisResults.filter(r => r.postura === 'En Contra').length} intervenciones</p>
-                  </div>
-                </div>
-                
-                {/* Lista detallada de resultados */}
-                <div className="space-y-3">
-                  {analysisResults.map((result, index) => (
-                    <div 
-                      key={index} 
-                      className={`p-4 rounded-xl border ${
-                        result.postura === 'A Favor' 
-                          ? 'bg-[#FF6B00]/5 border-[#FF6B00]/20' 
-                          : 'bg-[#00E5FF]/5 border-[#00E5FF]/20'
-                      }`}
-                    >
-                      <div className="flex items-center justify-between mb-2">
-                        <div className="flex items-center gap-2">
-                          <span className={`font-semibold ${
-                            result.postura === 'A Favor' ? 'text-[#FF6B00]' : 'text-[#00E5FF]'
-                          }`}>
-                            {result.postura === 'A Favor' ? scoringResult.teamAName : scoringResult.teamBName}
-                          </span>
-                          <span className="text-slate-400">•</span>
-                          <span className="text-slate-300 text-sm capitalize">{result.fase}</span>
-                        </div>                        
-                        <div className="flex items-center gap-2">
-                          <span className="text-2xl font-bold text-white">{result.total}</span>
-                          <span className="text-slate-400 text-sm">/ {result.max_total}</span>
-                        </div>
-                      </div>
-                      
-                      {/* Criterios */}
-                      <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 text-sm">
-                        {result.criterios.map((criterio, cIndex) => (
-                          <div key={cIndex} className="flex items-center justify-between bg-slate-900/50 rounded px-2 py-1">
-                            <span className="text-slate-400 truncate mr-2">{criterio.criterio}</span>
-                            <span className={`font-medium ${
-                              criterio.nota >= 4 ? 'text-green-400' : 
-                              criterio.nota >= 3 ? 'text-[#00E5FF]' : 
-                              criterio.nota >= 2 ? 'text-yellow-400' : 'text-[#FF6B00]'
-                            }`}>
-                              {criterio.nota}
-                            </span>
-                          </div>
-                        ))}
-                      </div>
-                    </div>
-                  ))}
-                </div>
+            {/* Puntuaciones */}
+            <div className="grid grid-cols-2 gap-4 max-w-2xl mx-auto">
+              <div className={`p-4 rounded-xl border-2 ${winner === 'A' ? (isRetor ? 'border-purple-500/50 bg-purple-500/10' : 'border-[#FF6B00]/50 bg-[#FF6B00]/10') : 'border-slate-700'}`}>
+                <p className={`text-sm font-medium mb-1 ${isRetor ? 'text-purple-400' : 'text-[#FF6B00]'}`}>{config.teamAName}</p>
+                <p className="text-3xl font-bold text-white">{isRetor ? getTeamScoreFromAnalysis('A') : teamATotal}</p>
+                <p className="text-slate-400 text-xs mt-1">/ {MAX_SCORE} puntos</p>
               </div>
-            ) : (
-              <>
-                <div className="grid grid-cols-2 gap-4 max-w-2xl mx-auto">
-                  <div className={`p-4 rounded-xl border-2 ${scoringResult.winner === 'A' ? 'border-[#FF6B00]/50 bg-[#FF6B00]/10' : 'border-slate-700'}`}>
-                    <p className="text-[#FF6B00] text-sm font-medium mb-1">{scoringResult.teamAName}</p>
-                    <p className="text-3xl font-bold text-white">{scoringResult.teamAScore.totalScore}</p>
-                  </div>
-                  
-                  <div className={`p-4 rounded-xl border-2 ${scoringResult.winner === 'B' ? 'border-[#00E5FF]/50 bg-[#00E5FF]/10' : 'border-slate-700'}`}>
-                    <p className="text-[#00E5FF] text-sm font-medium mb-1">{scoringResult.teamBName}</p>
-                    <p className="text-3xl font-bold text-white">{scoringResult.teamBScore.totalScore}</p>
-                  </div>
-                </div>
-              </>
-            )}
-          </div>
-
-          {/* Sección de Rúbrica Manual - Solo mostrar si no estamos viendo resultados automáticos */}
-          {(!showAnalysisResults || analysisResults.length === 0) && (
-          <div className="space-y-4">
-            {DEBATE_RUBRIC.map((section) => (
-              <div key={section.roundType} className="bg-slate-800/50 border border-slate-700 rounded-2xl overflow-hidden">
-                <button
-                  onClick={() => toggleRound(section.roundType)}
-                  className="w-full p-4 flex items-center justify-between hover:bg-slate-700/30 transition-colors"
-                >
-                  <div className="flex items-center gap-3">
-                    <Mic className="w-5 h-5 text-slate-400" />
-                    <span className="text-white font-semibold">{section.roundName}</span>
-                  </div>
-                  {expandedRounds[section.roundType] ? <ChevronUp className="w-5 h-5 text-slate-400" /> : <ChevronDown className="w-5 h-5 text-slate-400" />}
-                </button>
-
-                {expandedRounds[section.roundType] && (
-                  <div className="border-t border-slate-700">
-                    <div className="p-4">
-                      {/* Headers de equipos */}
-                      <div className="grid grid-cols-3 gap-4 mb-4">
-                        <div className="text-center">
-                          <span className="text-[#FF6B00] font-semibold">{scoringResult.teamAName}</span>
-                          <span className="text-slate-500 ml-2">(A Favor)</span>
-                        </div>
-                        <div className="text-center">
-                          <span className="text-slate-400 text-sm">Rúbrica</span>
-                        </div>
-                        <div className="text-center">
-                          <span className="text-[#00E5FF] font-semibold">{scoringResult.teamBName}</span>
-                          <span className="text-slate-500 ml-2">(En Contra)</span>
-                        </div>
-                      </div>
-                      
-                      {/* Criterios con puntuaciones a los lados */}
-                      <div className="space-y-3">
-                        {section.criteria.map((criterion) => {
-                          const keyA = `A-${criterion.id}`;
-                          const keyB = `B-${criterion.id}`;
-                          const scoreA = editableScores[keyA]?.score || 0;
-                          const scoreB = editableScores[keyB]?.score || 0;
-                          
-                          return (
-                            <div key={criterion.id} className="grid grid-cols-3 gap-4 items-center bg-slate-900/50 rounded-lg p-3">
-                              {/* Puntuación Equipo A */}
-                              <div className="flex justify-center">
-                                {isEditing ? (
-                                  <div className="flex items-center gap-2">
-                                    <input
-                                      type="number"
-                                      min="0"
-                                      max="4"
-                                      value={scoreA}
-                                      onChange={(e) => handleScoreChange('A', criterion.id, parseInt(e.target.value) || 0)}
-                                      className="w-16 px-2 py-1 bg-slate-800 border border-slate-600 rounded text-white text-center"
-                                    />
-                                    <span className="text-slate-500 text-sm">/ {criterion.maxScore}</span>
-                                  </div>
-                                ) : (
-                                  <div className={`inline-flex items-center gap-2 px-3 py-1 rounded-full border ${getScoreBgColor(scoreA)}`}>
-                                    <span className={`font-bold ${getScoreColor(scoreA)}`}>{scoreA}</span>
-                                    <span className="text-slate-400 text-sm">/ {criterion.maxScore}</span>
-                                  </div>
-                                )}
-                              </div>
-                              
-                              {/* Descripción de la rúbrica (centro) */}
-                              <div className="text-center">
-                                <p className="text-slate-300 text-sm">{criterion.description}</p>
-                              </div>
-                              
-                              {/* Puntuación Equipo B */}
-                              <div className="flex justify-center">
-                                {isEditing ? (
-                                  <div className="flex items-center gap-2">
-                                    <input
-                                      type="number"
-                                      min="0"
-                                      max="4"
-                                      value={scoreB}
-                                      onChange={(e) => handleScoreChange('B', criterion.id, parseInt(e.target.value) || 0)}
-                                      className="w-16 px-2 py-1 bg-slate-800 border border-slate-600 rounded text-white text-center"
-                                    />
-                                    <span className="text-slate-500 text-sm">/ {criterion.maxScore}</span>
-                                  </div>
-                                ) : (
-                                  <div className={`inline-flex items-center gap-2 px-3 py-1 rounded-full border ${getScoreBgColor(scoreB)}`}>
-                                    <span className={`font-bold ${getScoreColor(scoreB)}`}>{scoreB}</span>
-                                    <span className="text-slate-400 text-sm">/ {criterion.maxScore}</span>
-                                  </div>
-                                )}
-                              </div>
-                            </div>
-                          );
-                        })}
-                      </div>
-                    </div>
-                  </div>
-                )}
+              
+              <div className={`p-4 rounded-xl border-2 ${winner === 'B' ? (isRetor ? 'border-purple-500/50 bg-purple-500/10' : 'border-[#00E5FF]/50 bg-[#00E5FF]/10') : 'border-slate-700'}`}>
+                <p className={`text-sm font-medium mb-1 ${isRetor ? 'text-purple-400' : 'text-[#00E5FF]'}`}>{config.teamBName}</p>
+                <p className="text-3xl font-bold text-white">{isRetor ? getTeamScoreFromAnalysis('B') : teamBTotal}</p>
+                <p className="text-slate-400 text-xs mt-1">/ {MAX_SCORE} puntos</p>
               </div>
-            ))}
-          </div>
-          )}
-
-          <div className="mt-6 bg-slate-800/50 border border-slate-700 rounded-2xl p-6">
-            <h2 className="text-xl font-bold text-white mb-4 flex items-center gap-2">
-              <Trophy className="w-6 h-6 text-yellow-400" />
-              Sumatorio y Evaluación Global
-            </h2>
-            
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-              {[
-                { team: 'A', name: scoringResult.teamAName, color: 'text-[#FF6B00]', connection: teamNotes.teamConnectionA, bestSpeaker: teamNotes.bestSpeakerA },
-                { team: 'B', name: scoringResult.teamBName, color: 'text-[#00E5FF]', connection: teamNotes.teamConnectionB, bestSpeaker: teamNotes.bestSpeakerB }
-              ].map(({ team, name, color, connection, bestSpeaker }) => (
-                <div key={team} className="space-y-4">
-                  <h3 className={`${color} font-semibold`}>{name}</h3>
-                  
-                  <div>
-                    <label className="block text-slate-400 text-sm mb-2">Conexión entre miembros (0-4)</label>
-                    {isEditing ? (
-                      <input
-                        type="number"
-                        min="0"
-                        max="4"
-                        value={connection}
-                        onChange={(e) => {
-                          const value = parseInt(e.target.value) || 0;
-                          setTeamNotes(prev => ({ ...prev, [`teamConnection${team}`]: value }));
-                          if (scoringResult) {
-                            const teamKey = team === 'A' ? 'teamAScore' : 'teamBScore';
-                            const updatedTeam = { ...scoringResult[teamKey], teamConnectionScore: value };
-                            updatedTeam.totalScore = calculateTeamTotal(updatedTeam.roundScores, value);
-                            setScoringResult({
-                              ...scoringResult,
-                              [teamKey]: updatedTeam,
-                              winner: determineWinner(
-                                team === 'A' ? updatedTeam : scoringResult.teamAScore,
-                                team === 'B' ? updatedTeam : scoringResult.teamBScore
-                              )
-                            });
-                          }
-                        }}
-                        className="w-full px-3 py-2 bg-slate-900/50 border border-slate-600 rounded-lg text-white"
-                      />
-                    ) : (
-                      <div className={`inline-flex items-center gap-2 px-3 py-1 rounded-full border ${getScoreBgColor(connection)}`}>
-                        <span className={`font-bold ${getScoreColor(connection)}`}>{connection}</span>
-                        <span className="text-slate-400">/ 4</span>
-                      </div>
-                    )}
-                  </div>
-                  
-                  <div>
-                    <label className="block text-slate-400 text-sm mb-2">Mejor Orador</label>
-                    {isEditing ? (
-                      <input
-                        type="text"
-                        value={bestSpeaker}
-                        onChange={(e) => setTeamNotes(prev => ({ ...prev, [`bestSpeaker${team}`]: e.target.value }))}
-                        placeholder="Nombre del mejor orador"
-                        className="w-full px-3 py-2 bg-slate-900/50 border border-slate-600 rounded-lg text-white"
-                      />
-                    ) : (
-                      <p className="text-white">{bestSpeaker || 'No especificado'}</p>
-                    )}
-                  </div>
-                </div>
-              ))}
             </div>
           </div>
 
-          {/* Botones de acción - debajo de Sumatorio y Evaluación Global */}
-          <div className="mt-6 mb-32 bg-slate-800/50 border border-slate-700 rounded-2xl p-6">
+          {/* Mostrar rúbrica según el tipo */}
+          {!showAnalysisResults && (
+            <>
+              <div className="mb-6 text-center">
+                <h2 className="text-xl font-bold text-white mb-2">
+                  {isRetor ? 'Rúbrica RETOR (10 criterios)' : 'Rúbrica UPCT (Académico)'}
+                </h2>
+                <p className="text-slate-400 text-sm">
+                  {isRetor 
+                    ? 'Escala 1-5 (Excelente) • 50 puntos máximo • Sin ponderaciones'
+                    : 'Escala 0-4 • 40 puntos máximo • Por rondas'
+                  }
+                </p>
+              </div>
+              
+              {isRetor ? renderRetorRubric() : renderUpctRubric()}
+            </>
+          )}
+
+          {/* Botones de acción */}
+          <div className="mt-8 mb-32 bg-slate-800/50 border border-slate-700 rounded-2xl p-6">
             <div className="flex flex-col sm:flex-row gap-4">
               <button
                 onClick={handleDownloadPDF}
@@ -588,7 +611,7 @@ export const ScoringScreen: React.FC<ScoringScreenProps> = ({ onFinish, onBack }
               
               <button
                 onClick={handleSaveEvaluation}
-                className="flex-1 flex items-center justify-center gap-2 px-6 py-3 bg-gradient-to-br from-green-600/20 to-green-600/10 text-green-400 rounded-xl font-semibold hover:from-green-600/30 hover:to-green-600/20 transition-all border border-green-500/30 shadow-[0_8px_32px_rgba(34,197,94,0.2)]"
+                className="flex-1 flex items-center justify-center gap-2 px-6 py-3 bg-gradient-to-br from-green-600/20 to-green-600/10 text-green-400 rounded-xl font-semibold hover:from-green-600/30 hover:to-green-600/20 transition-all border border-green-500/30 shadow-[[0_8px_32px_rgba(34,197,94,0.2)]"
               >
                 <CheckCircle2 className="w-5 h-5" />
                 <span>Guardar Evaluación</span>
@@ -600,3 +623,5 @@ export const ScoringScreen: React.FC<ScoringScreenProps> = ({ onFinish, onBack }
     </div>
   );
 };
+
+export default ScoringScreen;

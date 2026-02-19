@@ -12,6 +12,7 @@ export type RoundType =
   | 'Definición'         // RETOR
   | 'Valoración';        // RETOR
 export type DebateState = 'setup' | 'paused' | 'running' | 'finished';
+export type DebateTypeId = 'upct' | 'retor';
 
 /**
  * Definición de una ronda de debate
@@ -46,6 +47,7 @@ export interface DebateConfig {
   teamAName: string;
   teamBName: string;
   debateTopic: string;
+  debateType: 'upct' | 'retor';
   roundDurations: {
     introduccion: number;
     primerRefutador: number;
@@ -339,11 +341,154 @@ export interface CreateProjectData {
 }
 
 // =============================================================================
+// RÚBRICA RETOR
+// =============================================================================
+
+/**
+ * Ítem de evaluación para rúbrica RETOR
+ */
+export interface RetorCriterion {
+  id: string;
+  category: string;
+  description: string;
+  maxScore: number;
+}
+
+/**
+ * Sección de la rúbrica RETOR
+ */
+export interface RetorRubricSection {
+  id: string;
+  name: string;
+  criteria: RetorCriterion[];
+}
+
+/**
+ * Rúbrica completa RETOR - 10 ítems, escala 1-5, máximo 50 puntos
+ */
+export const RETOR_RUBRIC: RetorRubricSection[] = [
+  {
+    id: 'comprension-mocion',
+    name: '1. La Comprensión de la Moción y del Desarrollo del Debate',
+    criteria: [
+      {
+        id: 'ajuste-mocion',
+        category: 'A favor / En contra',
+        description: 'Ajuste a la moción: Los argumentos son claros, comprensibles y defendidos con razonamientos sólidos',
+        maxScore: 5
+      },
+      {
+        id: 'coherencia-contextual',
+        category: 'A favor / En contra',
+        description: 'Coherencia contextual: El contexto expuesto explica adecuadamente la situación del debate y justifica por qué su postura es necesaria o adecuada',
+        maxScore: 5
+      },
+      {
+        id: 'anticipacion-refutacion',
+        category: 'A favor / En contra',
+        description: 'Anticipación a la refutación: El equipo demuestra conocer los puntos fuertes del rival y los puntos débiles propios, anticipando críticas o respondiendo a posibles ataques',
+        maxScore: 5
+      },
+      {
+        id: 'desarrollo-logico',
+        category: 'A favor / En contra',
+        description: 'Desarrollo lógico: Los argumentos se presentan de forma ordenada, conectados entre fases (definición → contexto → valoración)',
+        maxScore: 5
+      },
+      {
+        id: 'cierre-sintetico',
+        category: 'A favor / En contra',
+        description: 'Cierre sintético: En la conclusión, el equipo sintetiza los principales acuerdos y desacuerdos del debate sin introducir información nueva',
+        maxScore: 5
+      }
+    ]
+  },
+  {
+    id: 'relevancia-informacion',
+    name: '2. La Relevancia de la Información Presentada',
+    criteria: [
+      {
+        id: 'pertinencia-informacion',
+        category: 'A favor / En contra',
+        description: 'Pertinencia de la información: Los datos, ejemplos y argumentos utilizados apoyan directamente la línea argumental del equipo',
+        maxScore: 5
+      },
+      {
+        id: 'uso-critico',
+        category: 'A favor / En contra',
+        description: 'Uso crítico: La información no se enumera sin más: se explica, se conecta con la moción y se utiliza para refutar o comparar',
+        maxScore: 5
+      },
+      {
+        id: 'fiabilidad-fuentes',
+        category: 'A favor / En contra',
+        description: 'Fiabilidad de fuentes: El equipo justifica o contextualiza la credibilidad de las fuentes, estudios o ejemplos utilizados',
+        maxScore: 5
+      }
+    ]
+  },
+  {
+    id: 'argumentacion-refutacion',
+    name: '3. Argumentación y Refutación (Fase de valoración)',
+    criteria: [
+      {
+        id: 'calidad-argumentativa',
+        category: 'A favor / En contra',
+        description: 'Calidad argumentativa: Los argumentos son claros, comprensibles y defendidos con razonamientos sólidos',
+        maxScore: 5
+      },
+      {
+        id: 'refutacion-efectiva',
+        category: 'A favor / En contra',
+        description: 'Refutación efectiva: El equipo responde directamente a los argumentos del rival y explica por qué su postura es superior',
+        maxScore: 5
+      }
+    ]
+  },
+  {
+    id: 'oratoria-persuasion',
+    name: '4. Oratoria y capacidad persuasiva',
+    criteria: [
+      {
+        id: 'claridad-expresiva',
+        category: 'A favor / En contra',
+        description: 'Claridad expresiva: Mensajes comprensibles, bien estructurados y adaptados al tiempo disponible',
+        maxScore: 5
+      },
+      {
+        id: 'persuasion',
+        category: 'A favor / En contra',
+        description: 'Persuasión: El discurso resulta convincente, seguro y coherente con la estrategia del equipo',
+        maxScore: 5
+      }
+    ]
+  },
+  {
+    id: 'trabajo-equipo',
+    name: '5. Trabajo en equipo y uso del formato RETOR',
+    criteria: [
+      {
+        id: 'coordinacion-equipo',
+        category: 'A favor / En contra',
+        description: 'Coordinación del equipo: Las intervenciones están conectadas entre sí y responden a una estrategia común',
+        maxScore: 5
+      },
+      {
+        id: 'uso-tiempo-retor',
+        category: 'A favor / En contra',
+        description: 'Uso del tiempo RETOR: El equipo gestiona correctamente los tiempos, respeta las fases y utiliza adecuadamente el minuto de oro',
+        maxScore: 5
+      }
+    ]
+  }
+];
+
+// =============================================================================
 // TIPOS LEGACY (mantener para compatibilidad)
 // =============================================================================
 
 /**
- * Rúbrica completa de evaluación por rondas
+ * Rúbrica completa de evaluación por rondas (UPCT/Académico)
  */
 export const DEBATE_RUBRIC: RubricSection[] = [
   {

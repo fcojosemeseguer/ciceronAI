@@ -99,6 +99,7 @@ export const SetupScreen: React.FC<SetupScreenProps> = ({ onStartDebate, onBack 
       teamAName: formData.teamAName,
       teamBName: formData.teamBName,
       debateTopic: formData.debateTopic,
+      debateType: selectedType as 'upct' | 'retor',
       roundDurations,
     };
     
